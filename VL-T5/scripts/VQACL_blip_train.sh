@@ -1,5 +1,5 @@
 # The name of experiment
-name=checkpoint
+name=blip2
 
 output=snap/$name
 
@@ -19,13 +19,14 @@ python -m torch.distributed.launch \
         --lr 1e-4 \
         --epochs 3 \
         --num_workers 4 \
-        --backbone 't5-base' \
+        --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
         --num_beams 5 \
-        --batch_size 80 \
-        --valid_batch_size 100 \
+        --batch_size 4 \
+        --valid_batch_size [8 \
         --from_scratch \
         --memory \
+        --optim 'blip_adamw' \
         --m_size 5000 \
         --comp_cate G-1 \
         --now_train

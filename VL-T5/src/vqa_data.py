@@ -199,15 +199,13 @@ class VQAFineTuneDataset(Dataset):
 
         question_id = datum['question_id']
         out_dict['question_id'] = question_id
-
+        out_dict['img_id'] = img
         out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
 
 
         out_dict['sent'] = sent
         out_dict['input_ids'] = torch.LongTensor(input_ids)
         out_dict['input_length'] = len(input_ids)
-        # out_dict['target_ids'] = torch.LongTensor(target_ids)
-        # out_dict['target_length'] = len(target_ids)
 
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
@@ -224,19 +222,6 @@ class VQAFineTuneDataset(Dataset):
                 out_dict['target'] = target
 
             elif self.args.raw_label:
-
-                # 10 raw answers
-                # ex) 'answers': [{'answer': 'net', 'answer_confidence': 'maybe', 'answer_id': 1},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 2},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 3},
-                #     {'answer': 'netting', 'answer_confidence': 'yes', 'answer_id': 4},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 5},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 6},
-                #     {'answer': 'mesh', 'answer_confidence': 'maybe', 'answer_id': 7},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 8},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 9},
-                #     {'answer': 'net', 'answer_confidence': 'yes', 'answer_id': 10}],
-
                 answers = datum['answers']
                 answer = random.choice(answers)['answer']
 
@@ -321,7 +306,7 @@ class VQAFineTuneDataset(Dataset):
         labels = []
         scores = []
         is_topk_optimal = []
-
+        img_ids = []
         cate_labels = []
         ques_labels = []
 
@@ -360,7 +345,8 @@ class VQAFineTuneDataset(Dataset):
                 cate_labels.append(entry['img_cate'])
             if 'ques_label' in entry:
                 ques_labels.append(entry['ques_label'])
-
+            if 'img_id' in entry:
+                img_ids.append(entry['img_id'])
 
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
@@ -383,6 +369,7 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['all_answers'] = all_answers
         batch_entry['scores'] = torch.FloatTensor(scores)
         batch_entry['labels'] = labels
+        batch_entry['img_id'] = img_ids
 
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
@@ -534,13 +521,12 @@ class VQADataset:
             qid = datum['question_id']
             val2014_id2datum[qid] = datum
         self.id2datum_gt = {**train2014_id2datum, **val2014_id2datum}
-
         # Loading datasets
         self.data = []
+        import pdb;pdb.set_trace()
         for split in self.splits:
             self.data.extend(
                 json.load(open(vqa_dir.joinpath("%s.json" % (split)))))
-
         if verbose:
             print("Load %d data from split(s) %s." %
                   (len(self.data), self.name))

@@ -1,12 +1,14 @@
+import os
 from torch.utils.data import DataLoader, Dataset, Sampler
 from pathlib import Path
 from collections import defaultdict
 import json
 import random
+from PIL import Image
 from multiprocessing import Pool
 import h5py
 import pickle
-import math
+import math 
 from tqdm import tqdm
 import torch
 import numpy as np
@@ -15,8 +17,8 @@ import re
 
 from torch.utils.data.distributed import DistributedSampler
 
-from transformers import T5TokenizerFast, BartTokenizer
-from tokenization import VLT5TokenizerFast
+from transformers import AutoProcessor, Blip2ForConditionalGeneration
+
 
 import sys
 sys.path.append("..")
@@ -25,7 +27,7 @@ from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
 workspace_dir = project_dir.parent
-dataset_dir = workspace_dir.joinpath('../datasets/').resolve()
+dataset_dir = workspace_dir.joinpath('datasets/').resolve()
 coco_dir = dataset_dir.joinpath('COCO')
 vg_dir = dataset_dir.joinpath('VG')
 coco_img_dir = coco_dir.joinpath('images/')
@@ -46,30 +48,17 @@ class VQAFineTuneDataset(Dataset):
 
         # Loading datasets to data
         self.sources = split.split(',')
-        if 't5' in self.args.backbone:
-            if self.args.use_vision:
-                self.tokenizer = VLT5TokenizerFast.from_pretrained(
-                    args.backbone,
-                    max_length=self.args.max_text_length,
-                    do_lower_case=self.args.do_lower_case)
-            else:
-                self.tokenizer = T5TokenizerFast.from_pretrained(
-                    args.backbone,
-                    max_length=self.args.max_text_length,
-                    do_lower_case=self.args.do_lower_case)
+        
 
-        elif 'bart' in self.args.backbone:
-            self.tokenizer = BartTokenizer.from_pretrained(
-                args.backbone,
-                # max_length=self.args.max_text_length,
-                do_lower_case=self.args.do_lower_case)
+        if 'blip' in self.args.backbone:
+            self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 
             if args.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
                         [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
                 special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
-                num_added_toks = self.tokenizer.add_special_tokens(special_tokens_dict)
-
+                num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
+        
         self.answer_normalizer = VQAEvaluator()
 
         self.img_ids_to_source = {}
@@ -116,16 +105,17 @@ class VQAFineTuneDataset(Dataset):
                 print("    cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
 
         self.n_boxes = args.n_boxes
-        self.source_to_h5 = {
-            'train': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
-            'minival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
-            'nominival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
-            'test': coco_feature_dir.joinpath(f'test2015_obj36.h5'),
+        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        self.source_dir = {
+            'train': os.path.join(data_dir, f'train2014'),
+            'minival': os.path.join(data_dir, f'val2014'),
+            'nominival': os.path.join(data_dir, f'val2014'),
+            'test': os.path.join(f'test2014'),
 
             'vg': dataset_dir.joinpath('VG/features').joinpath('vg_gqa_obj36.h5'),
 
-            'train2014': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
-            'val2014': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
+            'train2014': os.path.join(data_dir, f'train2014'),
+            'val2014': os.path.join(data_dir, f'val2014'),
         }
 
 
@@ -139,6 +129,7 @@ class VQAFineTuneDataset(Dataset):
         out_dict['args'] = self.args
 
         datum = self.data[idx]
+
         ###### Image ######
         if self.args.use_vision:
             img_id = datum['img_id']
@@ -147,62 +138,39 @@ class VQAFineTuneDataset(Dataset):
             out_dict['img_cate'] = ImgId_cate_map[img_id]
 
             source = self.img_ids_to_source[img_id] # source: val2014
+        
+            f = f"{os.path.join(self.source_dir[source], img_id)}.jpg"
+            
+            if os.path.exists(f):
+                image = Image.open(f).convert("RGB")
+            else:
+                raise "image path does not exists"
+            ###### Text #####
+            # caption = datum['caption']
+            if 'sent' in datum:
+                sent = datum['sent']
+            elif 'question' in datum:
+                sent = datum['question']
+            sent = f"Question: {sent.lower()} Answer:"
+            inputs = self.processor(image, text=sent, max_length=20, 
+                truncation=True, return_tensors="pt")
 
-            f = self.source_to_h5[source]
+            out_dict['pixel_values'] = inputs['pixel_values']
 
-            if isinstance(f, Path):
-                # path = self.data_source_to_h5_path[source]
-                f = h5py.File(f, 'r')
-                # self.split_to_h5_features[split_i] = f
-                self.source_to_h5[source] = f
 
-            feats = np.zeros(shape=(self.n_boxes, 2048), dtype=np.float32)
-            try:
-                f[f'{img_id}/features'].read_direct(feats)
-            except KeyError:
-                print('img_id', img_id)
-                print(datum)
-                exit()
-
-            feats = torch.from_numpy(feats)
-            out_dict['vis_feats'] = feats
-
-            # Normalize the boxes (to 0 ~ 1)
-            img_h = f[f'{img_id}/img_h'][()]
-            img_w = f[f'{img_id}/img_w'][()]
-            boxes = f[f'{img_id}/boxes'][()]  # (x1, y1, x2, y2)
-            boxes[:, (0, 2)] /= img_w
-            boxes[:, (1, 3)] /= img_h
-            np.testing.assert_array_less(boxes, 1+1e-5)
-            # np.testing.assert_array_less(boxes, 1+5e-2)
-            np.testing.assert_array_less(-boxes, 0+1e-5)
-            boxes = torch.from_numpy(boxes)
-
-            boxes.clamp_(min=0.0, max=1.0)
-
-            out_dict['boxes'] = boxes
-        ###### Text #####
-        # caption = datum['caption']
-        if 'sent' in datum:
-            sent = datum['sent']
-        elif 'question' in datum:
-            sent = datum['question']
-
-        input_ids = self.tokenizer.encode(f'vqa: {sent}', max_length=20, truncation=True)
 
         question_id = datum['question_id']
         out_dict['question_id'] = question_id
 
         out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
 
-
+        out_dict['img_id'] = img_id
         out_dict['sent'] = sent
-        out_dict['input_ids'] = torch.LongTensor(input_ids)
-        out_dict['input_length'] = len(input_ids)
+        out_dict['input_ids'] = inputs["input_ids"]
+        out_dict['input_length'] = len(inputs["input_ids"][0])
 
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
-
         if 'label' in datum:
             label = datum['label']
             out_dict['label'] = label
@@ -222,12 +190,12 @@ class VQAFineTuneDataset(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-
+                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
 
-                target_ids = self.tokenizer.encode(answer, max_length=10, truncation=True)
+                target_ids = self.procesor.tokenizer.encode(answer, max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
@@ -252,14 +220,13 @@ class VQAFineTuneDataset(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-
+                answer = f'{answer}'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
 
-                target_ids = self.tokenizer.encode(answer, max_length=10, truncation=True)
-
+                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
 
@@ -272,23 +239,18 @@ class VQAFineTuneDataset(Dataset):
         args = batch[0]['args']
 
         B = len(batch)
-
         S_W_L = max(entry['input_length'] for entry in batch)
-        input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.tokenizer.pad_token_id
+        input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 
         if args.use_vision:
-            V_L = len(batch[0]['boxes'])
-            feat_dim = batch[0]['vis_feats'].shape[-1]
-
-            boxes = torch.zeros(B, V_L, 4, dtype=torch.float)
-            vis_feats = torch.zeros(B, V_L, feat_dim, dtype=torch.float)
+            vis_feats = torch.zeros(B, 3, 224, 224, dtype=torch.float)
 
         if 'target' in batch[0]:
             # targets = []
             targets = torch.zeros(B, len(batch[0]['target']), dtype=torch.float)
         if 'target_ids' in batch[0]:
             T_W_L = max(entry['target_length'] for entry in batch)
-            target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.tokenizer.pad_token_id
+            target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 
         sentences = []
         question_ids = []
@@ -299,16 +261,16 @@ class VQAFineTuneDataset(Dataset):
         labels = []
         scores = []
         is_topk_optimal = []
+        img_ids = []
 
         cate_labels = []
         ques_labels = []
 
         for i, entry in enumerate(batch):
-            input_ids[i, :entry['input_length']] = entry['input_ids']
+            input_ids[i, :entry['input_length']] = entry['input_ids'][0]
 
             if args.use_vision:
-                boxes[i] += entry['boxes']
-                vis_feats[i] += entry['vis_feats']
+                vis_feats[i] += entry['pixel_values'][0]
                 # img_ids.append(entry['img_id'])
                 # img_paths.append(entry['img_path'])
 
@@ -318,7 +280,6 @@ class VQAFineTuneDataset(Dataset):
             if 'target' in entry:
                 targets[i] += entry['target']
                 # targets.append(entry['target'])
-
             sentences.append(entry['sent'])
             question_ids.append(entry['question_id'])
             if 'answer' in entry:
@@ -343,16 +304,15 @@ class VQAFineTuneDataset(Dataset):
 
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
-            word_mask = target_ids != self.tokenizer.pad_token_id
-            target_ids[~word_mask] = -100
+            # word_mask = target_ids != self.processor.tokenizer.pad_token_id
+            # target_ids[~word_mask] = -100
             batch_entry['target_ids'] = target_ids
         if 'target' in batch[0]:
             # targets = torch.stack(targets, dim=0)
             batch_entry['targets'] = targets
 
         if args.use_vision:
-            batch_entry['boxes'] = boxes
-            batch_entry['vis_feats'] = vis_feats
+            batch_entry['pixel_values'] = vis_feats
             # batch_entry['img_id'] = img_ids
             # batch_entry['img_paths'] = img_paths
 
@@ -391,29 +351,14 @@ class VQAFineTuneDataset_memory(Dataset):
         # if self.verbose:
         #     print('Data sources: ', self.sources,'_' + task)
 
-        if 't5' in self.args.backbone:
-            if self.args.use_vision:
-                self.tokenizer = VLT5TokenizerFast.from_pretrained(
-                    args.backbone,
-                    max_length=self.args.max_text_length,
-                    do_lower_case=self.args.do_lower_case)
-            else:
-                self.tokenizer = T5TokenizerFast.from_pretrained(
-                    args.backbone,
-                    max_length=self.args.max_text_length,
-                    do_lower_case=self.args.do_lower_case)
-
-        elif 'bart' in self.args.backbone:
-            self.tokenizer = BartTokenizer.from_pretrained(
-                args.backbone,
-                # max_length=self.args.max_text_length,
-                do_lower_case=self.args.do_lower_case)
+        if 'blip' in self.args.backbone:
+            self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 
             if args.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
                         [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
                 special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
-                num_added_toks = self.tokenizer.add_special_tokens(special_tokens_dict)
+                num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
 
         self.answer_normalizer = VQAEvaluator()
 
@@ -456,16 +401,17 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        self.source_to_h5 = {
-            'train': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
-            'minival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
-            'nominival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
-            'test': coco_feature_dir.joinpath(f'test2015_obj36.h5'),
+        data_dir = "../datasets/COCO/"
+        self.source_dir = {
+            'train': os.path.join(data_dir, f'train2014'),
+            'minival': os.path.join(data_dir, f'val2014'),
+            'nominival': os.path.join(data_dir, f'val2014'),
+            'test': os.path.join(f'test2014'),
 
             'vg': dataset_dir.joinpath('VG/features').joinpath('vg_gqa_obj36.h5'),
 
-            'train2014': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
-            'val2014': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
+            'train2014': os.path.join(data_dir, f'train2014'),
+            'val2014': os.path.join(data_dir, f'val2014'),
         }
 
 
@@ -487,63 +433,39 @@ class VQAFineTuneDataset_memory(Dataset):
 
             out_dict['img_cate'] = ImgId_cate_map[img_id]
 
-            source = self.img_ids_to_source[img_id]
+            source = self.img_ids_to_source[img_id] # source: val2014
+        
+            f = f"{os.path.join(self.source_dir[source], img_id)}.jpg"
+            
+            if os.path.exists(f):
+                image = Image.open(f).convert("RGB")
+            else:
+                raise "image path does not exists"
+            
+            ###### Text #####
+            # caption = datum['caption']
+            if 'sent' in datum:
+                sent = datum['sent']
+            elif 'question' in datum:
+                sent = datum['question']
 
-            f = self.source_to_h5[source]
+            sent = f"Question: {sent} Answer:"
+            inputs = self.processor(image, text=sent, max_length=20, 
+                truncation=True, return_tensors="pt")
 
-            if isinstance(f, Path):
-                # path = self.data_source_to_h5_path[source]
-                f = h5py.File(f, 'r')
-                # self.split_to_h5_features[split_i] = f
-                self.source_to_h5[source] = f
+            out_dict['pixel_values'] = inputs['pixel_values']
 
-            feats = np.zeros(shape=(self.n_boxes, 2048), dtype=np.float32)
-            try:
-                f[f'{img_id}/features'].read_direct(feats)
-            except KeyError:
-                print('img_id', img_id)
-                print(datum)
-                exit()
-
-            feats = torch.from_numpy(feats)
-            out_dict['vis_feats'] = feats
-
-            # Normalize the boxes (to 0 ~ 1)
-            img_h = f[f'{img_id}/img_h'][()]
-            img_w = f[f'{img_id}/img_w'][()]
-            boxes = f[f'{img_id}/boxes'][()]  # (x1, y1, x2, y2)
-            boxes[:, (0, 2)] /= img_w
-            boxes[:, (1, 3)] /= img_h
-            np.testing.assert_array_less(boxes, 1+1e-5)
-            # np.testing.assert_array_less(boxes, 1+5e-2)
-            np.testing.assert_array_less(-boxes, 0+1e-5)
-            boxes = torch.from_numpy(boxes)
-
-            boxes.clamp_(min=0.0, max=1.0)
-
-            out_dict['boxes'] = boxes
-
-        ###### Text #####
-        # caption = datum['caption']
-        if 'sent' in datum:
-            sent = datum['sent']
-        elif 'question' in datum:
-            sent = datum['question']
-
-        input_ids = self.tokenizer.encode(f'vqa: {sent}', max_length=20, truncation=True)
 
         question_id = datum['question_id']
         out_dict['question_id'] = question_id
 
-        out_dict['ques_label'] = QuesId_task_map[str(question_id)]
+        out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
 
-
+        out_dict['img_id'] = img_id
         out_dict['sent'] = sent
-        out_dict['input_ids'] = torch.LongTensor(input_ids)
-        out_dict['input_length'] = len(input_ids)
-        # out_dict['target_ids'] = torch.LongTensor(target_ids)
-        # out_dict['target_length'] = len(target_ids)
-
+        out_dict['input_ids'] = inputs["input_ids"]
+        out_dict['input_length'] = len(inputs["input_ids"][0])
+        
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
 
@@ -566,18 +488,17 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-
+                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
 
-                target_ids = self.tokenizer.encode(answer, max_length=10, truncation=True)
+                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
 
             else:
-                # https://github.com/airsplay/lxmert/blob/master/src/pretrain/lxmert_pretrain.py#L191
 
                 answers = []
                 scores = []
@@ -596,13 +517,13 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-
+                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
 
-                target_ids = self.tokenizer.encode(answer, max_length=10, truncation=True)
+                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
@@ -616,23 +537,17 @@ class VQAFineTuneDataset_memory(Dataset):
         args = batch[0]['args']
 
         B = len(batch)
-
         S_W_L = max(entry['input_length'] for entry in batch)
-        input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.tokenizer.pad_token_id
+        input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 
         if args.use_vision:
-            V_L = len(batch[0]['boxes'])
-            feat_dim = batch[0]['vis_feats'].shape[-1]
-
-            boxes = torch.zeros(B, V_L, 4, dtype=torch.float)
-            vis_feats = torch.zeros(B, V_L, feat_dim, dtype=torch.float)
+            vis_feats = torch.zeros(B, 3, 224, 224, dtype=torch.float)
 
         if 'target' in batch[0]:
-            # targets = []
             targets = torch.zeros(B, len(batch[0]['target']), dtype=torch.float)
         if 'target_ids' in batch[0]:
             T_W_L = max(entry['target_length'] for entry in batch)
-            target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.tokenizer.pad_token_id
+            target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 
         sentences = []
         question_ids = []
@@ -646,14 +561,12 @@ class VQAFineTuneDataset_memory(Dataset):
 
         cate_labels = []
         ques_labels = []
-
         for i, entry in enumerate(batch):
-            input_ids[i, :entry['input_length']] = entry['input_ids']
+            input_ids[i, :entry['input_length']] = entry['input_ids'][0]
 
             if args.use_vision:
-                boxes[i] += entry['boxes']
-                vis_feats[i] += entry['vis_feats']
-                img_ids.append(entry['img_id'])
+                vis_feats[i] += entry['pixel_values'][0]
+                # img_ids.append(entry['img_id'])
                 # img_paths.append(entry['img_path'])
 
             if 'target_ids' in entry:
@@ -662,7 +575,6 @@ class VQAFineTuneDataset_memory(Dataset):
             if 'target' in entry:
                 targets[i] += entry['target']
                 # targets.append(entry['target'])
-
             sentences.append(entry['sent'])
             question_ids.append(entry['question_id'])
             if 'answer' in entry:
@@ -678,23 +590,24 @@ class VQAFineTuneDataset_memory(Dataset):
             if 'is_topk_optimal' in entry:
                 is_topk_optimal.append(entry['is_topk_optimal'])
 
-            if 'img_cate' in entry:
+            if 'img_cate' in entry: #-------------
                 cate_labels.append(entry['img_cate'])
             if 'ques_label' in entry:
                 ques_labels.append(entry['ques_label'])
+            if 'img_id' in entry:
+                img_ids.append(entry['img_id'])
 
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
-            word_mask = target_ids != self.tokenizer.pad_token_id
-            target_ids[~word_mask] = -100
+            # word_mask = target_ids != self.processor.tokenizer.pad_token_id
+            # target_ids[~word_mask] = -100
             batch_entry['target_ids'] = target_ids
         if 'target' in batch[0]:
             # targets = torch.stack(targets, dim=0)
             batch_entry['targets'] = targets
 
         if args.use_vision:
-            batch_entry['boxes'] = boxes
-            batch_entry['vis_feats'] = vis_feats
+            batch_entry['pixel_values'] = vis_feats
             # batch_entry['img_id'] = img_ids
             # batch_entry['img_paths'] = img_paths
 
@@ -704,11 +617,12 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['all_answers'] = all_answers
         batch_entry['scores'] = torch.FloatTensor(scores)
         batch_entry['labels'] = labels
-        batch['img_ids'] = img_ids
+        batch_entry['img_id'] = img_ids
+
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1)
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
         batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
         ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
@@ -818,7 +732,26 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
     # cate_loader[CateGroup] = loader
     return loader
 
+def filter_blank_answers(dataset):
+        filtered_data = []
+        blanks = 0
+        for i in range(len(dataset)):
+            if dataset[i]['answer'].strip():  # Check if 'answer' is not blank
+                filtered_data.append(dataset[i])
+            else:
+                blanks+=1
+        return filtered_data
 
+class FilteredVQAFineTuneDataset():
+    def __init__(self, dataset):
+        self.data = filter_blank_answers(dataset)
+        self.collate_fn = dataset.collate_fn
+        
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]
 
 def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
                batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what'):
@@ -827,7 +760,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
 
     cate_loader = {}
     total_num = 0
-
+    
     for idx, CateGroup in enumerate(Category_splits):
         print(CateGroup, end=',')
         dataset = VQAFineTuneDataset(
@@ -842,7 +775,11 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             mode=mode,
             task=task,
             cates=Category_splits[CateGroup],)
-
+        # blanks_pre=[dataset[i]['answer'] for i in range(len(dataset)) if dataset[i]['answer']=='\n']
+        # import pdb;pdb.set_trace()
+        # print("Filtering Dataset")
+        # dataset = FilteredVQAFineTuneDataset(dataset)
+        # blanks_post=[dataset[i]['answer'] for i in range(len(dataset)) if dataset[i]['answer']=='\n']
         total_num += len(dataset)
         if distributed:
             sampler = DistributedSampler(dataset)
@@ -851,13 +788,13 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
         if mode == 'train':
             loader = DataLoader(
                 dataset, batch_size=batch_size, shuffle=(sampler is None),
-                num_workers=0, pin_memory=True, sampler=sampler,
+                num_workers=workers, pin_memory=True, sampler=sampler,
                 collate_fn=dataset.collate_fn)
         else:
             loader = DataLoader(
                 dataset,
                 batch_size=batch_size,
-                num_workers=0, pin_memory=True,
+                num_workers=workers, pin_memory=True,
                 sampler=sampler,
                 shuffle=None if (sampler is not None) else False,
                 collate_fn=dataset.collate_fn,
@@ -943,7 +880,6 @@ class VQADataset:
     def __len__(self):
         return len(self.data)
 
-
 class VQAEvaluator:
     def __init__(self, dataset: VQADataset = None):
         self.dataset = dataset
@@ -951,52 +887,52 @@ class VQAEvaluator:
         """https://github.com/GT-Vision-Lab/VQA/blob/master/PythonEvaluationTools/vqaEvaluation/vqaEval.py"""
 
         self.contractions = {"aint": "ain't", "arent": "aren't", "cant": "can't", "couldve": "could've", "couldnt": "couldn't", \
-							 "couldn'tve": "couldn't've", "couldnt've": "couldn't've", "didnt": "didn't", "doesnt": "doesn't", "dont": "don't", "hadnt": "hadn't", \
-							 "hadnt've": "hadn't've", "hadn'tve": "hadn't've", "hasnt": "hasn't", "havent": "haven't", "hed": "he'd", "hed've": "he'd've", \
-							 "he'dve": "he'd've", "hes": "he's", "howd": "how'd", "howll": "how'll", "hows": "how's", "Id've": "I'd've", "I'dve": "I'd've", \
-							 "Im": "I'm", "Ive": "I've", "isnt": "isn't", "itd": "it'd", "itd've": "it'd've", "it'dve": "it'd've", "itll": "it'll", "let's": "let's", \
-							 "maam": "ma'am", "mightnt": "mightn't", "mightnt've": "mightn't've", "mightn'tve": "mightn't've", "mightve": "might've", \
-							 "mustnt": "mustn't", "mustve": "must've", "neednt": "needn't", "notve": "not've", "oclock": "o'clock", "oughtnt": "oughtn't", \
-							 "ow's'at": "'ow's'at", "'ows'at": "'ow's'at", "'ow'sat": "'ow's'at", "shant": "shan't", "shed've": "she'd've", "she'dve": "she'd've", \
-							 "she's": "she's", "shouldve": "should've", "shouldnt": "shouldn't", "shouldnt've": "shouldn't've", "shouldn'tve": "shouldn't've", \
-							 "somebody'd": "somebodyd", "somebodyd've": "somebody'd've", "somebody'dve": "somebody'd've", "somebodyll": "somebody'll", \
-							 "somebodys": "somebody's", "someoned": "someone'd", "someoned've": "someone'd've", "someone'dve": "someone'd've", \
-							 "someonell": "someone'll", "someones": "someone's", "somethingd": "something'd", "somethingd've": "something'd've", \
-							 "something'dve": "something'd've", "somethingll": "something'll", "thats": "that's", "thered": "there'd", "thered've": "there'd've", \
-							 "there'dve": "there'd've", "therere": "there're", "theres": "there's", "theyd": "they'd", "theyd've": "they'd've", \
-							 "they'dve": "they'd've", "theyll": "they'll", "theyre": "they're", "theyve": "they've", "twas": "'twas", "wasnt": "wasn't", \
-							 "wed've": "we'd've", "we'dve": "we'd've", "weve": "we've", "werent": "weren't", "whatll": "what'll", "whatre": "what're", \
-							 "whats": "what's", "whatve": "what've", "whens": "when's", "whered": "where'd", "wheres": "where's", "whereve": "where've", \
-							 "whod": "who'd", "whod've": "who'd've", "who'dve": "who'd've", "wholl": "who'll", "whos": "who's", "whove": "who've", "whyll": "why'll", \
-							 "whyre": "why're", "whys": "why's", "wont": "won't", "wouldve": "would've", "wouldnt": "wouldn't", "wouldnt've": "wouldn't've", \
-							 "wouldn'tve": "wouldn't've", "yall": "y'all", "yall'll": "y'all'll", "y'allll": "y'all'll", "yall'd've": "y'all'd've", \
-							 "y'alld've": "y'all'd've", "y'all'dve": "y'all'd've", "youd": "you'd", "youd've": "you'd've", "you'dve": "you'd've", \
-							 "youll": "you'll", "youre": "you're", "youve": "you've"}
+                             "couldn'tve": "couldn't've", "couldnt've": "couldn't've", "didnt": "didn't", "doesnt": "doesn't", "dont": "don't", "hadnt": "hadn't", \
+                             "hadnt've": "hadn't've", "hadn'tve": "hadn't've", "hasnt": "hasn't", "havent": "haven't", "hed": "he'd", "hed've": "he'd've", \
+                             "he'dve": "he'd've", "hes": "he's", "howd": "how'd", "howll": "how'll", "hows": "how's", "Id've": "I'd've", "I'dve": "I'd've", \
+                             "Im": "I'm", "Ive": "I've", "isnt": "isn't", "itd": "it'd", "itd've": "it'd've", "it'dve": "it'd've", "itll": "it'll", "let's": "let's", \
+                             "maam": "ma'am", "mightnt": "mightn't", "mightnt've": "mightn't've", "mightn'tve": "mightn't've", "mightve": "might've", \
+                             "mustnt": "mustn't", "mustve": "must've", "neednt": "needn't", "notve": "not've", "oclock": "o'clock", "oughtnt": "oughtn't", \
+                             "ow's'at": "'ow's'at", "'ows'at": "'ow's'at", "'ow'sat": "'ow's'at", "shant": "shan't", "shed've": "she'd've", "she'dve": "she'd've", \
+                             "she's": "she's", "shouldve": "should've", "shouldnt": "shouldn't", "shouldnt've": "shouldn't've", "shouldn'tve": "shouldn't've", \
+                             "somebody'd": "somebodyd", "somebodyd've": "somebody'd've", "somebody'dve": "somebody'd've", "somebodyll": "somebody'll", \
+                             "somebodys": "somebody's", "someoned": "someone'd", "someoned've": "someone'd've", "someone'dve": "someone'd've", \
+                             "someonell": "someone'll", "someones": "someone's", "somethingd": "something'd", "somethingd've": "something'd've", \
+                             "something'dve": "something'd've", "somethingll": "something'll", "thats": "that's", "thered": "there'd", "thered've": "there'd've", \
+                             "there'dve": "there'd've", "therere": "there're", "theres": "there's", "theyd": "they'd", "theyd've": "they'd've", \
+                             "they'dve": "they'd've", "theyll": "they'll", "theyre": "they're", "theyve": "they've", "twas": "'twas", "wasnt": "wasn't", \
+                             "wed've": "we'd've", "we'dve": "we'd've", "weve": "we've", "werent": "weren't", "whatll": "what'll", "whatre": "what're", \
+                             "whats": "what's", "whatve": "what've", "whens": "when's", "whered": "where'd", "wheres": "where's", "whereve": "where've", \
+                             "whod": "who'd", "whod've": "who'd've", "who'dve": "who'd've", "wholl": "who'll", "whos": "who's", "whove": "who've", "whyll": "why'll", \
+                             "whyre": "why're", "whys": "why's", "wont": "won't", "wouldve": "would've", "wouldnt": "wouldn't", "wouldnt've": "wouldn't've", \
+                             "wouldn'tve": "wouldn't've", "yall": "y'all", "yall'll": "y'all'll", "y'allll": "y'all'll", "yall'd've": "y'all'd've", \
+                             "y'alld've": "y'all'd've", "y'all'dve": "y'all'd've", "youd": "you'd", "youd've": "you'd've", "you'dve": "you'd've", \
+                             "youll": "you'll", "youre": "you're", "youve": "you've"}
 
         self.manualMap    = { 'none': '0',
-							  'zero': '0',
-							  'one': '1',
-							  'two': '2',
-							  'three': '3',
-							  'four': '4',
-							  'five': '5',
-							  'six': '6',
-							  'seven': '7',
-							  'eight': '8',
-							  'nine': '9',
-							  'ten': '10'
-							}
+                              'zero': '0',
+                              'one': '1',
+                              'two': '2',
+                              'three': '3',
+                              'four': '4',
+                              'five': '5',
+                              'six': '6',
+                              'seven': '7',
+                              'eight': '8',
+                              'nine': '9',
+                              'ten': '10'
+                            }
 
         self.articles     = ['a',
-							 'an',
-							 'the'
-							]
+                             'an',
+                             'the'
+                            ]
 
         self.periodStrip  = re.compile("(?!<=\d)(\.)(?!\d)")
         self.commaStrip   = re.compile("(\d)(\,)(\d)")
         self.punct        = [';', r"/", '[', ']', '"', '{', '}',
-							 '(', ')', '=', '+', '\\', '_', '-',
-							 '>', '<', '@', '`', ',', '?', '!']
+                             '(', ')', '=', '+', '\\', '_', '-',
+                             '>', '<', '@', '`', ',', '?', '!']
 
         self.n = 2
 
@@ -1005,6 +941,7 @@ class VQAEvaluator:
         for quesid, ans in quesid2ans.items():
             datum = self.dataset.id2datum[quesid]
             label = datum['label']
+            
             if ans in label:
                 score += label[ans]
         return score / len(quesid2ans)
@@ -1161,4 +1098,72 @@ class VQAEvaluator:
         self.accuracy['overall']         = round(100*float(sum(accQA))/len(accQA), self.n)
         self.accuracy['perQuestionType'] = {quesType: round(100*float(sum(accQuesType[quesType]))/len(accQuesType[quesType]), self.n) for quesType in accQuesType}
         self.accuracy['perAnswerType']   = {ansType:  round(100*float(sum(accAnsType[ansType]))/len(accAnsType[ansType]), self.n) for ansType in accAnsType}
+
+
+if __name__ == "__main__":
+    from Question_type import All_task, Category_splits
+    from src.param import parse_args
+    from tqdm import *
+    coco_Ours = All_task
+    args = parse_args()
+    args.backbone = 'blip'
+    split = f'test'
+    test_memory = True
+    if not test_memory:
+        train_dset = VQADataset(f"karpathy_{split}", True)
+        train_loader, total_num_Q = get_loader(
+                    args,
+                    coco_Ours,
+                    [],
+                    train_dset,
+                    split=f'karpathy_{split}', mode='train', batch_size=32,
+                    distributed=False, gpu=True,
+                    workers=4,
+                    topk=-1,
+                    task='q_recognition',
+                )
+
+        train_loader_cate = train_loader['G1']
+        total_train_num = len(train_loader_cate.dataset)
+        now_loader = train_loader_cate
+        for now_batch in tqdm(now_loader):
+            import pdb; pdb.set_trace()
+            continue
+    else:
+        task_list = []
+        for task in coco_Ours:
+            task_list.append(task)
+        latest_task_idx = 0
+        M = 1000
+        Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+        for task_idx, task in enumerate(task_list[latest_task_idx+1:]):
+            print('======================== Now is task "', task, '" ========================')
+            if task_idx != latest_task_idx + 1:
+                each_memory = int(M)
+                data_info_path = ('../datasets/vqa/Partition_Q/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
+                with open(data_info_path) as f:
+                    data_info_dicts = json.load(f)
+                random.shuffle(data_info_dicts)  # shuffle
+                each_memory_for_cate = int(each_memory / len(Category_splits))
+                for cate in Category_splits:
+                    num = 0
+                    Examplar_set[cate].append([])
+                    for _d in data_info_dicts:
+                        img_id = _d['img_id']
+                        if img_id in ImgId_cate_map:
+                            if ImgId_cate_map[img_id] in Category_splits[cate]:
+                                Examplar_set[cate][task_idx - 1].append(_d)
+                                num += 1
+                                if num >= each_memory_for_cate:
+                                    break
+                print('Load from Partition_Q_v3......')
+                for cate in Category_splits:
+                    for i in range(task_idx):
+                        Examplar_set[cate][i] = Examplar_set[cate][i][: each_memory_for_cate]
+
+                All_examplar = []
+                for E_set in Examplar_set:
+                    for task_set in Examplar_set[E_set]:
+                        All_examplar += task_set
+                print("# The size of the cate Memory:", len(All_examplar))
 

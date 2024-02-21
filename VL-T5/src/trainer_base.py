@@ -34,6 +34,11 @@ else:
     _use_native_amp = True
     from torch.cuda.amp import autocast
 
+class TerminationError(Exception):
+    """Error raised when a termination signal is received."""
+
+    def __init__(self):
+        super().__init__("External signal received: forcing termination")
 
 class TrainerBase(object):
     def __init__(self, args, train_loader=None, val_loader=None, test_loader=None, train=True):
@@ -55,12 +60,14 @@ class TrainerBase(object):
             set_global_logging_level(logging.ERROR, ["transformers"])
 
     def create_config(self):
-        from transformers import T5Config, BartConfig
+        from transformers import T5Config, BartConfig, Blip2Config
 
         if 't5' in self.args.backbone:
             config_class = T5Config
         elif 'bart' in self.args.backbone:
             config_class = BartConfig
+        elif 'blip' in self.args.backbone:
+            config_class =  Blip2Config
         else:
             return None
 
@@ -68,23 +75,23 @@ class TrainerBase(object):
 
         args = self.args
 
-        config.feat_dim = args.feat_dim
-        config.pos_dim = args.pos_dim
-        config.n_images = 2
+        # config.feat_dim = args.feat_dim
+        # config.pos_dim = args.pos_dim
+        # config.n_images = 2
 
-        config.use_vis_order_embedding = args.use_vis_order_embedding
+        # config.use_vis_order_embedding = args.use_vis_order_embedding
 
-        config.dropout_rate = args.dropout
-        config.dropout = args.dropout
-        config.attention_dropout = args.dropout
-        config.activation_dropout = args.dropout
+        # config.dropout_rate = args.dropout
+        # config.dropout = args.dropout
+        # config.attention_dropout = args.dropout
+        # config.activation_dropout = args.dropout
 
-        config.use_vis_layer_norm = args.use_vis_layer_norm
-        config.individual_vis_layer_norm = args.individual_vis_layer_norm
-        config.losses = args.losses
+        # config.use_vis_layer_norm = args.use_vis_layer_norm
+        # config.individual_vis_layer_norm = args.individual_vis_layer_norm
+        # config.losses = args.losses
 
-        config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
-        config.classifier = args.classifier
+        # config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
+        # config.classifier = args.classifier
 
         return config
 
@@ -93,37 +100,46 @@ class TrainerBase(object):
         print(f'Building Model at GPU {self.args.gpu}')
 
         model_name = self.args.backbone
-
-        model = model_class.from_pretrained(
-            model_name,
+        if 'blip' in model_name:
+            # model_name = "pretrained/models--Salesforce--blip2-opt-2.7b/snapshots/235c75ea3861136b9dd202c6edc6a7ba285c35e3"
+            model_name = "Salesforce/blip2-opt-2.7b"
+        print(f"Loading {model_class}")
+        model = model_class.from_pretrained(model_name,
             config=config,
             **kwargs
         )
         return model
 
     def create_tokenizer(self, **kwargs):
-        from transformers import T5Tokenizer, BartTokenizer, T5TokenizerFast, BartTokenizerFast
+        from transformers import T5Tokenizer, BartTokenizer, T5TokenizerFast, BartTokenizerFast, AutoProcessor
         from tokenization import VLT5Tokenizer, VLT5TokenizerFast
+        if 'blip' in self.args.tokenizer:
+            processor = AutoProcessor.from_pretrained(
+                self.args.backbone,
+                max_length=self.args.max_text_length,
+                do_lower_case=self.args.do_lower_case,
+                **kwargs
+                    )
+            tokenizer = processor.tokenizer
+        else:
+            if 't5' in self.args.tokenizer:
+                if self.args.use_vision:
+                    # tokenizer_class = VLT5Tokenizer
+                    tokenizer_class = VLT5TokenizerFast
+                else:
+                    # tokenizer_class = T5Tokenizer
+                    tokenizer_class = T5TokenizerFast
+            elif 'bart' in self.args.tokenizer:
+                tokenizer_class = BartTokenizer
+                # tokenizer_class = BartTokenizerFast
+            tokenizer_name = self.args.backbone
 
-        if 't5' in self.args.tokenizer:
-            if self.args.use_vision:
-                # tokenizer_class = VLT5Tokenizer
-                tokenizer_class = VLT5TokenizerFast
-            else:
-                # tokenizer_class = T5Tokenizer
-                tokenizer_class = T5TokenizerFast
-        elif 'bart' in self.args.tokenizer:
-            tokenizer_class = BartTokenizer
-            # tokenizer_class = BartTokenizerFast
-
-        tokenizer_name = self.args.backbone
-
-        tokenizer = tokenizer_class.from_pretrained(
-            tokenizer_name,
-            max_length=self.args.max_text_length,
-            do_lower_case=self.args.do_lower_case,
-            **kwargs
-            )
+            tokenizer = tokenizer_class.from_pretrained(
+                tokenizer_name,
+                max_length=self.args.max_text_length,
+                do_lower_case=self.args.do_lower_case,
+                **kwargs
+                )
 
         return tokenizer
 
@@ -132,8 +148,13 @@ class TrainerBase(object):
             print('Building Optimizer')
 
         lr_scheduler = None
+        if 'blip_adamw' in self.args.optim:
+            optim = torch.optim.AdamW(params=self.model.parameters(), lr=1e-4, 
+                weight_decay=self.args.warmup_ratio)
+            # nparam = count_parameters(self.model.parameters())
+            # print(f'trainable_parameters = {nparam}')
 
-        if 'adamw' in self.args.optim:
+        elif 'adamw' in self.args.optim:
             from transformers.optimization import AdamW, get_linear_schedule_with_warmup, get_constant_schedule_with_warmup
             batch_per_epoch = int(total_train_num / self.args.batch_size) #len(train_loader)
             t_total = batch_per_epoch // self.args.gradient_accumulation_steps * self.args.epochs
@@ -246,24 +267,42 @@ class TrainerBase(object):
     def save(self, name):
         if not os.path.isdir(self.args.output):
             os.makedirs(self.args.output, exist_ok=True)
-        torch.save(self.model.state_dict(), os.path.join(self.args.output, "%s.pth" % name))
+        if self.args.fp16:
+            scaler = self.scaler.state_dict()
+        else:
+            scaler = {}
+        state = {
+            "model":self.model.state_dict(),
+            "optimizer":self.optim.state_dict(),
+            "scaler": scaler
+        }
+        savepath = os.path.join(self.args.output, "%s.pth" % name)
+        print(f"Saving model at {savepath}")
+        torch.save(state, savepath)
 
     def load(self, path, loc=None):
         if loc is None and hasattr(self.args, 'gpu'):
             loc = f'cuda:{self.args.gpu}'
-        state_dict = torch.load("%s.pth" % path, map_location=loc)
-
-        original_keys = list(state_dict.keys())
+        # state_dict = torch.load("%s.pth" % path, map_location=loc)
+        if not path.endswith('.pth'):
+            path = "%s.pth" % path
+        checkpoint = torch.load(path, map_location=loc)
+        original_keys = list(checkpoint['model'].keys())
         for key in original_keys:
             if key.startswith("module.vis_encoder."):
                 new_key = 'module.encoder.' + key[len("module.vis_encoder."):]
-                state_dict[new_key] = state_dict.pop(key)
+                checkpoint['model'][new_key] = checkpoint['model'].pop(key)
 
             if key.startswith("module.model.vis_encoder."):
                 new_key = 'module.model.encoder.' + key[len("module.model.vis_encoder."):]
-                state_dict[new_key] = state_dict.pop(key)
+                checkpoint['model'][new_key] = checkpoint['model'].pop(key)
 
-        results = self.model.load_state_dict(state_dict, strict=False)
+        # results = self.model.load_state_dict(state_dict, strict=False)
+        result = self.model.load_state_dict(checkpoint["model"], strict=False)
+        self.optim.load_state_dict(checkpoint["optimizer"])
+        if self.args.fp16:
+            self.scaler.load_state_dict(checkpoint["scaler"])
+        # self.epoch_idx = checkpoint["epoch_idx"]
         if self.verbose:
             print('Model loaded from ', path)
-            pprint(results)
+            pprint(result)

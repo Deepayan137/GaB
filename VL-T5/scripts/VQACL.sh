@@ -24,4 +24,4 @@ python -m torch.distributed.launch \
         --num_beams 5 \
         --batch_size 80 \
         --valid_batch_size 100 \
-        --from_scratch
+        --from_scratch \

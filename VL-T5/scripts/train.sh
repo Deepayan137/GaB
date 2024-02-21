@@ -5,11 +5,8 @@ output=snap/$name
 
 
 PYTHONPATH=$PYTHONPATH:./src \
-python -m torch.distributed.launch \
-    --nproc_per_node=$1 \
-    --master_port 6666 \
-    src/vqacl.py \
-        --multiGPU \
+python src/vqacl.py \
+        --nproc_per_node=$1 \
         --train karpathy_train \
         --valid karpathy_val \
         --test karpathy_test \
@@ -18,7 +15,7 @@ python -m torch.distributed.launch \
         --clip_grad_norm 5 \
         --lr 1e-4 \
         --epochs 3 \
-        --num_workers 4 \
+        --num_workers 2 \
         --backbone 't5-base' \
         --output $output ${@:2} \
         --num_beams 5 \

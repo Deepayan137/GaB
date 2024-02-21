@@ -75,8 +75,6 @@ class VLT5VQA(VLT5):
 
         cate_labels = batch['cate_labels'].to(device)
         ques_labels = batch['ques_labels'].to(device)
-
-
         result = {}
         if self.config.classifier:
             B = len(input_ids)

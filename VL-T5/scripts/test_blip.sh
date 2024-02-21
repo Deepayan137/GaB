@@ -1,15 +1,11 @@
 # The name of experiment
-name=checkpoint
+name='naiveblip'
 
 output=snap/$name
 
 
 PYTHONPATH=$PYTHONPATH:./src \
-python -m torch.distributed.launch \
-    --nproc_per_node=$1 \
-    --master_port 6666 \
-    src/vqacl.py \
-        --multiGPU \
+python src/vqacl.py \
         --train karpathy_train \
         --valid karpathy_val \
         --test karpathy_test \
@@ -19,13 +15,12 @@ python -m torch.distributed.launch \
         --lr 1e-4 \
         --epochs 3 \
         --num_workers 4 \
-        --backbone 't5-base' \
+        --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
         --num_beams 5 \
         --batch_size 80 \
-        --valid_batch_size 100 \
-        --from_scratch \
-        --memory \
-        --m_size 5000 \
-        --comp_cate G-1 \
-        --now_train
+        --valid_batch_size 1 \
+        --optim 'blip_adamw' \
+        --local-rank 0 \
+        --eval_blip True \
+        --checkpoint 'snap/naiveblip_qtoken/q_location_LAST.pth'

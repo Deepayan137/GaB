@@ -13,7 +13,7 @@ def random_dic(dicts):
     return new_dict
 
 #  10 lingustic-driven task for VQA v2
-All_task = ['q_recognition', 'q_location', 'q_judge', 'q_commonsense', 'q_count','q_action', 'q_color', 'q_type', 'q_subcategory','q_causal']
+All_task = ['q_location','q_recognition', 'q_judge', 'q_commonsense', 'q_count','q_action', 'q_color', 'q_type', 'q_subcategory','q_causal']
 Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory']
 
 # visual-driven task for VQA v2
@@ -26,10 +26,10 @@ Category_splits = {'G1': [58, 48, 55, 36, 64, 1, 70, 73, 42, 15, 6, 18, 49, 59, 
 
 import json
 
-with open('datasets/QuesId_task_map.json') as fp:
+with open('/home/deepayan.das/projects/VQACL/datasets/QuesId_task_map.json') as fp:
     QuesId_task_map = json.load(fp)
 
-with open('datasets/ImgId_cate_map.json') as fp:
+with open('/home/deepayan.das/projects/VQACL/datasets/ImgId_cate_map.json') as fp:
     ImgId_cate_map = json.load(fp)
 
 print("Success to load the QuesId_task_map and QuesId_task_map")

@@ -31,27 +31,27 @@ class VisualEmbedding(nn.Module):
         feat_dim = config.feat_dim
         pos_dim = config.pos_dim
         # n_objs = config.n_objs
-        n_images = config.n_images
+        n_images = config.n_images # 2
 
         if self.config.individual_vis_layer_norm:
 
             # Object feature encoding
-            feat_embedding = [nn.Linear(feat_dim, config.d_model)]
+            feat_embedding = [nn.Linear(feat_dim, config.d_model)] # 2048, 768
             if self.config.use_vis_layer_norm:
                 feat_embedding.append(T5LayerNorm(config.d_model, eps=config.layer_norm_epsilon))
-            self.feat_embedding = nn.Sequential(*feat_embedding)
+            self.feat_embedding = nn.Sequential(*feat_embedding) # linear layer + layer_norm
 
             # self.relative_vis_pos_embedding = nn.Linear(pos_dim + 1, config.num_heads)
-            absolute_vis_pos_embedding = [nn.Linear(pos_dim + 1, config.d_model)]
+            absolute_vis_pos_embedding = [nn.Linear(pos_dim + 1, config.d_model)] # 4 + 1, 768 
             if self.config.use_vis_layer_norm:
-                absolute_vis_pos_embedding.append(T5LayerNorm(config.d_model, eps=config.layer_norm_epsilon))
+                absolute_vis_pos_embedding.append(T5LayerNorm(config.d_model, eps=config.layer_norm_epsilon)) # pos_embed + layer_norm
             self.absolute_vis_pos_embedding = nn.Sequential(*absolute_vis_pos_embedding)
             # self.absolute_vis_pos_layer_norm = T5LayerNorm(config.d_model, eps=config.layer_norm_epsilon)
 
             if self.config.use_vis_order_embedding:
                 # self.obj_order_embedding = nn.Embedding(n_objs, config.d_model)
                 self.obj_order_embedding = obj_order_embedding
-                self.img_order_embedding = nn.Embedding(n_images, config.d_model)
+                self.img_order_embedding = nn.Embedding(n_images, config.d_model) # 2, 768
 
         else:
             # Object feature encoding
@@ -362,7 +362,6 @@ class VLT5(T5ForConditionalGeneration):
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
-
         #---- Modified ----#
         # self.encoder = T5Stack(encoder_config, self.shared)
         self.encoder = JointEncoder(encoder_config, self.shared)
@@ -437,19 +436,19 @@ class VLT5(T5ForConditionalGeneration):
 
         Parameters:
         ----------
-        a:  Tensor(N_a,D)
-        b:  Tensor(N_b,D)
+        a:  Tensor(N_a,D) prototype N_a type of question (10, 768) or category (80, 768)
+        b:  Tensor(N_b,D) average question embeddings in a given batch (80, 768) 
         rep: str
             Representation to compute cosine similarity: real | bipolar | tanh
         Return
         ------
-        similarity: Tensor(N_a,N_b)
+        similarity: Tensor(N_a,N_b) (10 or 80, 80)
         """
         sim_act = nn.Tanh()  # meta-train: tanh
         a_normalized = F.normalize(sim_act(a), dim=1) # [class_num, 768]
         b_normalized = F.normalize(sim_act(b), dim=1) #[bs, dim]
         similiarity = F.linear(a_normalized, b_normalized).transpose(1,0) # [bs, class_num]
-        max_idx = torch.argmax(similiarity, dim=1) #[bs]
+        max_idx = torch.argmax(similiarity, dim=1) #[bs] 
         selected_prototype = a[max_idx] # [bs, 768]
 
         if labels is not None:
@@ -493,7 +492,7 @@ class VLT5(T5ForConditionalGeneration):
                 self.Q_prototype = self.Q_task_cur_proto[current_task_id]
 
 
-            self.V_prototype = proto_beta*self.V_prototype + (1-proto_beta)*current_V_prototype
+            self.V_prototype = proto_beta * self.V_prototype + (1-proto_beta) * current_V_prototype
             self.Q_prototype_num = self.Q_prototype_num.detach() + current_num_Q
             self.V_prototype_num = self.V_prototype_num.detach() + current_num_V
 
@@ -566,7 +565,6 @@ class VLT5(T5ForConditionalGeneration):
             )
 
         hidden_states = encoder_outputs[0] # [bs, L+V_L, 768]
-
         if 'cate_labels' in kwargs:
             cate_labels = kwargs['cate_labels']  # [bs, num_classes]
         if 'ques_labels' in kwargs:
@@ -579,7 +577,6 @@ class VLT5(T5ForConditionalGeneration):
 
         if 'current_task_id' in kwargs:
             current_task_id = kwargs['current_task_id']
-
         if 'proto_update' in kwargs and kwargs['proto_update']:  # only for training
 
             current_prototype_Q, current_num_Q = self.calculate_current_prototype(hidden_states[:, :self.L, :],
@@ -667,7 +664,7 @@ class VLT5(T5ForConditionalGeneration):
 
         if return_hidden_state:
             return sequence_output
-
+        
         lm_logits = self.lm_head(sequence_output)
 
         loss = None
@@ -681,17 +678,9 @@ class VLT5(T5ForConditionalGeneration):
                 loss_fct = CrossEntropyLoss(ignore_index=-100)
             else:
                 loss_fct = CrossEntropyLoss(ignore_index=-100, reduction='none')
-            loss = loss_fct(
-                lm_logits.view(-1, lm_logits.size(-1)),
-                labels.view(-1))
+            loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)),labels.view(-1))
 
-            # print('loss')
-            # print(loss)
-
-        # if not return_dict:
-        #     output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
-        #     return ((loss,) + output) if loss is not None else output
-
+        
         return VLSeq2SeqLMOutput(
             loss=loss,
             logits=lm_logits,

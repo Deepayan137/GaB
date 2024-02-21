@@ -28,6 +28,10 @@ def get_optimizer(optim, verbose=False):
         if verbose:
             print("Optimizer: Using RMSProp")
         optimizer = torch.optim.RMSprop
+    elif optim == 'blip_adamw':
+        if verbose:
+            print("Optimizer: Using AdamW for BLIP")
+        optimizer = 'blip_adamw'
     elif optim == 'adam':
         if verbose:
             print("Optimizer: Using Adam")
@@ -79,7 +83,7 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--fp16', action='store_true')
     parser.add_argument("--distributed", action='store_true')
     parser.add_argument("--num_workers", default=0, type=int)
-    parser.add_argument('--local_rank', type=int, default=-1)
+    parser.add_argument('--local-rank', type=int, default=-1, help='Local rank for distributed training')
 
     # Model Config
     parser.add_argument('--backbone', type=str, default='t5-base')
@@ -96,7 +100,7 @@ def parse_args(parse=True, **optional_kwargs):
 
     parser.add_argument('--n_boxes', type=int, default=36)
     parser.add_argument('--max_n_boxes', type=int, default=36)
-    parser.add_argument('--max_text_length', type=int, default=20)
+    parser.add_argument('--max_text_length', type=int, default=50)
 
     # Training
     parser.add_argument('--batch_size', type=int, default=256)
@@ -189,7 +193,7 @@ def parse_args(parse=True, **optional_kwargs):
 
     parser.add_argument("--proto_alpha", type=float, default=0.5)
     parser.add_argument("--proto_beta", type=float, default=0.3)
-
+    parser.add_argument("--eval_blip", default=False, type=str2bool)
 
 
 
