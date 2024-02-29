@@ -194,7 +194,7 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--proto_alpha", type=float, default=0.5)
     parser.add_argument("--proto_beta", type=float, default=0.3)
     parser.add_argument("--eval_blip", default=False, type=str2bool)
-
+    parser.add_argument('--full', default=True, type=str2bool)
 
 
     # Parse the arguments.

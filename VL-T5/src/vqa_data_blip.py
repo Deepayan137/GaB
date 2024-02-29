@@ -1,4 +1,5 @@
 import os
+from torch.utils.data import Subset
 from torch.utils.data import DataLoader, Dataset, Sampler
 from pathlib import Path
 from collections import defaultdict
@@ -65,7 +66,7 @@ class VQAFineTuneDataset(Dataset):
         data_info_dicts_cate = []
         self.cate_set = set()
         for source in self.sources:
-            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q/{source}_'+f'{task}.json')
+            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q_V2/{source}_'+f'{task}.json')
             with open(data_info_path) as f:
                 _data_info_dicts = json.load(f)
                 _data_info_dicts.extend(Examplar_set)
@@ -105,12 +106,13 @@ class VQAFineTuneDataset(Dataset):
                 print("    cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
 
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
             'nominival': os.path.join(data_dir, f'val2014'),
-            'test': os.path.join(f'test2014'),
+            'test': os.path.join(data_dir, f'test2015'),
 
             'vg': dataset_dir.joinpath('VG/features').joinpath('vg_gqa_obj36.h5'),
 
@@ -129,7 +131,6 @@ class VQAFineTuneDataset(Dataset):
         out_dict['args'] = self.args
 
         datum = self.data[idx]
-
         ###### Image ######
         if self.args.use_vision:
             img_id = datum['img_id']
@@ -190,7 +191,6 @@ class VQAFineTuneDataset(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
@@ -220,13 +220,13 @@ class VQAFineTuneDataset(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-                answer = f'{answer}'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
-
-                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
+                eos_token_id = [2]
+                target_ids = self.processor.tokenizer.encode(answer, 
+                    max_length=10, truncation=True)
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
 
@@ -488,7 +488,6 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
@@ -517,13 +516,13 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
-
-                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
+                # eos_token_id = self.processor.tokenizer.eos_token_id
+                target_ids = self.processor.tokenizer.encode(answer, 
+                    max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
@@ -780,14 +779,25 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
         # print("Filtering Dataset")
         # dataset = FilteredVQAFineTuneDataset(dataset)
         # blanks_post=[dataset[i]['answer'] for i in range(len(dataset)) if dataset[i]['answer']=='\n']
-        total_num += len(dataset)
+
+        dataset_num = len(dataset)
+        total_num += dataset_num
+        
+        
         if distributed:
             sampler = DistributedSampler(dataset)
         else:
             sampler = None
         if mode == 'train':
+            # if task == 'q_recognition' or task == 'q_action':
+                # dataset_indices = torch.randperm(dataset_num)
+                # subset_num = int(dataset_num)
+                # subset_indices = dataset_indices[:subset_num]
+                # print("Get subset dataset")
+                # dataset_sub = Subset(dataset, subset_indices)
+                # dataset = FilteredVQAFineTuneDataset(dataset)
             loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=(sampler is None),
+                dataset, batch_size=batch_size, shuffle=True,
                 num_workers=workers, pin_memory=True, sampler=sampler,
                 collate_fn=dataset.collate_fn)
         else:
@@ -1140,7 +1150,7 @@ if __name__ == "__main__":
             print('======================== Now is task "', task, '" ========================')
             if task_idx != latest_task_idx + 1:
                 each_memory = int(M)
-                data_info_path = ('../datasets/vqa/Partition_Q/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
+                data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
                 with open(data_info_path) as f:
                     data_info_dicts = json.load(f)
                 random.shuffle(data_info_dicts)  # shuffle

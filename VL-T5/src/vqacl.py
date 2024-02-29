@@ -1,3 +1,4 @@
+import sys
 import torch.backends.cudnn as cudnn
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -6,7 +7,7 @@ import os
 import collections
 from pathlib import Path
 from packaging import version
-
+import copy
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -113,24 +114,10 @@ class Trainer(TrainerBase):
             self.model.resize_token_embeddings(self.tokenizer.vocab_size)
         elif 'bart' in self.args.tokenizer:
             self.model.resize_token_embeddings(self.model.model.shared.num_embeddings + num_added_toks)
-        # elif 'blip' in self.args.tokenizer:
-        #     self.model.resize_token_embeddings(self.tokenizer.vocab_size)
         self.model.tokenizer = self.tokenizer
 
         # Load Checkpoint
         self.start_epoch = None
-        # if args.load is not None:
-        #     print("Loading earlier checkpoint")
-        #     ckpt_path = args.load + '.pth'
-        #     self.load_checkpoint(ckpt_path)
-
-        # --------------------- random seed --------------------#
-        # if self.args.from_scratch:
-        #     if args.ifseed:
-        #         self.init_weights(seed=args.seed, ifseed=True)
-        #     else:
-        #         self.init_weights()
-
         # GPU Options
         print(f'Model Launching at GPU {self.args.gpu}')
         if self.verbose:
@@ -174,195 +161,185 @@ class Trainer(TrainerBase):
             latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
             latest_task_idx = self.task_list.index(latest_task)
             self._load_checkpoint(latest_task, latest_task_idx)
-        elif os.listdir(self.args.output):
-            checkpoints = [('_'.join(filename.split('_')[:2])) for filename in os.listdir(self.args.output)]
-            task2id = {task: i for i, task in enumerate(All_task)}
-            id2task = {v: k for k, v in task2id.items()}
-            taskid_ckpts = [task2id[ckpt] for ckpt in checkpoints]
-            max_id = max(taskid_ckpts)
-            latest_task = id2task[max_id]
-            latest_task_idx = max_id - 1
-            print("Loading an interrupted model")
-            self._load_checkpoint(latest_task, latest_task_idx)
 
         task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
         id2task = {v:k for k, v in task2id.items()}
-        for task in self.task_list[latest_task_idx+1:]:  # for each task, train for several epochs
-            task_idx = task2id[task]
-            print('======================== Now is task "', task, '" ========================')
-            self.task_iftrain[task] = 1
-            # Memory
-            if args.memory:
-                if task_idx > 0:
-                    each_memory = int(self.M / task_idx)
-                    data_info_path = ('../datasets/vqa/Partition_Q/karpathy_train_' + f'{self.task_list[task_idx - 1]}.json')
-                    with open(data_info_path) as f:
-                        data_info_dicts = json.load(f)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        base_state = {
+            "model":self.model.state_dict()
+        }
+        base_state_dict = {k: v.cpu() for k, v in base_state["model"].items()}
+        try:
+            for i, task in enumerate(self.task_list[latest_task_idx+1:]):  # for each task, train for several epochs
+                if i > 0:
+                    # print("ending")
+                    # sys.exit()
+                    self.model.load_state_dict({k: v.to(device) for k, v in base_state_dict.items()})
+                    self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+                    print("Reset model to base state and starting training for new task")
+                task_idx = task2id[task]
+                print('======================== Now is task "', task, '" ========================')
+                self.task_iftrain[task] = 1
+                # Memory
+                if args.memory:
+                    if task_idx >0:
+                        each_memory = int(self.M / task_idx)
 
-                    random.shuffle(data_info_dicts)  # shuffle
-                    each_memory_for_cate = int(each_memory / len(Category_splits))
-                    for cate in Category_splits:
-                        num = 0
-                        self.Examplar_set[cate].append([])
-                        for _d in data_info_dicts:
-                            img_id = _d['img_id']
-                            if img_id in ImgId_cate_map:
-                                if ImgId_cate_map[img_id] in Category_splits[cate]:
-                                    self.Examplar_set[cate][task_idx - 1].append(_d)
-                                    num += 1
-                                    if num >= each_memory_for_cate:
-                                        break
+                        data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{self.task_list[task_idx - 1]}.json')
+                        with open(data_info_path) as f:
+                            data_info_dicts = json.load(f)
 
-                    print('Load from Partition_Q_v3......')
-                    for cate in Category_splits:
-                        for i in range(task_idx):
-                            self.Examplar_set[cate][i] = self.Examplar_set[cate][i][: each_memory_for_cate]
+                        random.shuffle(data_info_dicts)  # shuffle
+                        each_memory_for_cate = int(each_memory / len(Category_splits))
+                        for cate in Category_splits:
+                            num = 0
+                            self.Examplar_set[cate].append([])
+                            for _d in data_info_dicts:
+                                img_id = _d['img_id']
+                                if img_id in ImgId_cate_map:
+                                    if ImgId_cate_map[img_id] in Category_splits[cate]:
+                                        self.Examplar_set[cate][task_idx - 1].append(_d)
+                                        num += 1
+                                        if num >= each_memory_for_cate:
+                                            break
 
-                    All_examplar = []
-                    for E_set in self.Examplar_set:
-                        for task_set in self.Examplar_set[E_set]:
-                            All_examplar += task_set
-                    # assert len(All_examplar) == M
-                    print("# The size of the cate Memory:", len(All_examplar))
+                        print('Load from Partition_Q_v3......')
+                        for cate in Category_splits:
+                            for i in range(task_idx):
+                                self.Examplar_set[cate][i] = self.Examplar_set[cate][i][: each_memory_for_cate]
+
+                        All_examplar = []
+                        for E_set in self.Examplar_set:
+                            for task_set in self.Examplar_set[E_set]:
+                                All_examplar += task_set
+                        # assert len(All_examplar) == M
+                        print("# The size of the cate Memory:", len(All_examplar))
+                    else:
+                        All_examplar = []
+                        each_memory = 0
                 else:
                     All_examplar = []
                     each_memory = 0
-            else:
-                All_examplar = []
-                each_memory = 0
 
-            # Load the data
-            print("#Loading ", task)
+                # Load the data
+                print("#Loading ", task)
 
-            train_loader, total_num_Q = get_loader(
-                args,
-                self.coco_Ours,
-                [],
-                self.train_dset,
-                split=args.train, mode='train', batch_size=args.batch_size,
-                distributed=args.distributed, gpu=args.gpu,
-                workers=args.num_workers,
-                topk=args.train_topk,
-                task=task,
-            )
+                train_loader, total_num_Q = get_loader(
+                    args,
+                    self.coco_Ours,
+                    [],
+                    self.train_dset,
+                    split=args.train, mode='train', batch_size=args.batch_size,
+                    distributed=args.distributed, gpu=args.gpu,
+                    workers=args.num_workers,
+                    topk=args.train_topk,
+                    task=task,
+                )
 
-            self.task_total_num[task_idx] = total_num_Q
+                self.task_total_num[task_idx] = total_num_Q
 
 
-            if args.valid_batch_size is not None:
-                self.valid_batch_size = args.valid_batch_size
-            else:
-                self.valid_batch_size = args.batch_size
-            print(f'Building val loader at GPU {args.gpu}')
-            val_loader, _ = get_loader(
-                args,
-                self.coco_Ours,
-                [],
-                self.val_dset,
-                split=args.valid, mode='val', batch_size=self.valid_batch_size,
-                distributed=args.distributed, gpu=args.gpu,
-                workers=4,
-                topk=args.valid_topk,
-                task=task,
-            )
+                if args.valid_batch_size is not None:
+                    self.valid_batch_size = args.valid_batch_size
+                else:
+                    self.valid_batch_size = args.batch_size
+                print(f'Building val loader at GPU {args.gpu}')
+                val_loader, _ = get_loader(
+                    args,
+                    self.coco_Ours,
+                    [],
+                    self.val_dset,
+                    split=args.valid, mode='val', batch_size=self.valid_batch_size,
+                    distributed=args.distributed, gpu=args.gpu,
+                    workers=4,
+                    topk=args.valid_topk,
+                    task=task,
+                )
 
-            print(f'Building test loader at GPU {args.gpu}')
-            # test_loader, _ = get_loader(
-            #     args,
-            #     self.coco_Ours,
-            #     [],
-            #     self.test_dset,
-            #     split=args.test, mode='val', batch_size=self.valid_batch_size,
-            #     distributed=args.distributed, gpu=args.gpu,
-            #     workers=4,
-            #     topk=args.valid_topk,
-            #     task=task,
-            # )
-            # self.test_loader_dict[task] = test_loader
+                print(f'Building test loader at GPU {args.gpu}')
+                test_loader = get_loader_test(
+                    args,
+                    self.coco_Ours,
+                    [],
+                    self.test_dset,
+                    split=args.test, mode='val', batch_size=self.valid_batch_size,
+                    distributed=args.distributed, gpu=args.gpu,
+                    workers=4,
+                    topk=args.valid_topk,
+                    task=task,
+                )
+                self.test_loader_dict_all[task] = test_loader
 
-            test_loader = get_loader_test(
-                args,
-                self.coco_Ours,
-                [],
-                self.test_dset,
-                split=args.test, mode='val', batch_size=self.valid_batch_size,
-                distributed=args.distributed, gpu=args.gpu,
-                workers=4,
-                topk=args.valid_topk,
-                task=task,
-            )
-            self.test_loader_dict_all[task] = test_loader
+                print("#Loading ", task)
+                memory_loader = get_loader_memory(
+                    args,
+                    self.coco_Ours,
+                    All_examplar,
+                    self.train_dset,
+                    split=args.train, mode='train', batch_size=32,
+                    distributed=args.distributed, gpu=args.gpu,
+                    workers=args.num_workers,
+                    topk=args.train_topk,
+                )  #G1-G5
 
-            print("#Loading ", task)
-            memory_loader = get_loader_memory(
-                args,
-                self.coco_Ours,
-                All_examplar,
-                self.train_dset,
-                split=args.train, mode='train', batch_size=32,
-                distributed=args.distributed, gpu=args.gpu,
-                workers=args.num_workers,
-                topk=args.train_topk,
-            )  #G1-G5
+                if self.verbose:
+                    loss_meter = LossMeter()
+                    loss_meter_mem = LossMeter()
+                    best_valid = 0.
+                    best_epoch = 0
 
-            if self.verbose:
-                loss_meter = LossMeter()
-                loss_meter_mem = LossMeter()
-                best_valid = 0.
-                best_epoch = 0
+                    if 't5' in self.args.backbone:
+                        if self.args.use_vision:
+                            project_name = "VLT5_VQA"
+                        else:
+                            project_name = "T5_VQA"
+                    elif 'blip' in self.args.backbone:
+                        if self.args.use_vision:
+                            project_name = "BLIP_VQA"
+                        
+                    elif 'bart' in self.args.backbone:
+                        if self.args.use_vision:
+                            project_name = "VLBart_VQA"
+                        else:
+                            project_name = "Bart_VQA"
 
-                if 't5' in self.args.backbone:
-                    if self.args.use_vision:
-                        project_name = "VLT5_VQA"
-                    else:
-                        project_name = "T5_VQA"
-                elif 'blip' in self.args.backbone:
-                    if self.args.use_vision:
-                        project_name = "BLIP_VQA"
-                    
-                elif 'bart' in self.args.backbone:
-                    if self.args.use_vision:
-                        project_name = "VLBart_VQA"
-                    else:
-                        project_name = "Bart_VQA"
+                    src_dir = Path(__file__).resolve().parent
+                    base_path = str(src_dir.parent)
+                    src_dir = str(src_dir)
+                    # wandb.save(os.path.join(src_dir + "/*.py"), base_path=base_path)
 
-                src_dir = Path(__file__).resolve().parent
-                base_path = str(src_dir.parent)
-                src_dir = str(src_dir)
-                # wandb.save(os.path.join(src_dir + "/*.py"), base_path=base_path)
+                if self.args.distributed:
+                    dist.barrier()
 
-            if self.args.distributed:
-                dist.barrier()
+                global_step = 0
+                Category_splits_random = random_dic(Category_splits)
 
-            global_step = 0
-            Category_splits_random = random_dic(Category_splits)
+                for idx, cateGroup in enumerate(Category_splits_random):
+                    print('-------- Training the cate group ', cateGroup,' of task ', task,'------')
 
-            for idx, cateGroup in enumerate(Category_splits_random):
-                print('-------- Training the cate group ', cateGroup,' of task ', task,'------')
-
-                self.train_loader_cate = train_loader[cateGroup]
-                self.val_loader_cate = val_loader[cateGroup]
-                self.memory_loader_cate = memory_loader[cateGroup]
-                # Optimizer
-                if self.iftrain:
-                    if len(self.memory_loader_cate.dataset) > 0:
-                        total_train_num = 2 * len(self.train_loader_cate.dataset)
-                    else:
-                        total_train_num = len(self.train_loader_cate.dataset)
-                    # self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(total_train_num)
-
-                    if self.args.fp16 and _use_native_amp:
-                        self.scaler = torch.cuda.amp.GradScaler()
-                    elif _use_apex:
-                        self.model, self.optim = amp.initialize(
-                            self.model, self.optim, opt_level='O1', verbosity=self.verbose)
-                    else:
-                        self.scaler = None
-                if cateGroup == self.composition_test_cate and task != self.task_list[latest_task_idx+1]:
-                    print("-------- Pass the training for", cateGroup, 'for after composition testing.--------')
-                    continue
-                start_epoch = 0
-                try:
+                    self.train_loader_cate = train_loader[cateGroup]
+                    self.val_loader_cate = val_loader[cateGroup]
+                    self.memory_loader_cate = memory_loader[cateGroup]
+                    # Optimizer
+                    if self.iftrain:
+                        if len(self.memory_loader_cate.dataset) > 0:
+                            total_train_num = 2 * len(self.train_loader_cate.dataset)
+                        else:
+                            total_train_num = len(self.train_loader_cate.dataset)
+                        if self.args.fp16 and _use_native_amp:
+                            self.scaler = torch.cuda.amp.GradScaler()
+                        elif _use_apex:
+                            self.model, self.optim = amp.initialize(
+                                self.model, self.optim, opt_level='O1', verbosity=self.verbose)
+                        else:
+                            self.scaler = None
+                    if cateGroup == self.composition_test_cate and task != self.task_list[latest_task_idx+1]:
+                        print("-------- Pass the training for", cateGroup, 'for after composition testing.--------')
+                        continue
+                    start_epoch = 0
+                    # score_dict = self.evaluate(self.val_loader_cate)
+                    # import pdb;pdb.set_trace()
+                    # print(score_dict)
                     for epoch in range(start_epoch, self.args.epochs):
                         if self.start_epoch is not None:
                             epoch += self.start_epoch
@@ -370,9 +347,8 @@ class Trainer(TrainerBase):
 
                         if self.args.distributed:
                             self.train_loader_cate.sampler.set_epoch(epoch)
-                        if self.verbose:
-                            pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
-
+                        # if self.verbose:
+                        #     pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
                         epoch_results = {
                             'loss': 0.,
                         }
@@ -394,65 +370,62 @@ class Trainer(TrainerBase):
                             results, lr = self.train_step(batch, epoch_results, task_idx, each_memory)
                             if mem_batch:
                                 results_mem, lr = self.train_step(mem_batch, epoch_results, task_idx, each_memory)
-                            if self.verbose:
-                                loss_meter.update(results['loss'].item())
-                                desc_str = f'Epoch {epoch} | LR {lr:.6f}'
-                                desc_str += f' | Loss {loss_meter.val:4f}'
-                                if mem_batch:
-                                    loss_meter_mem.update(results_mem['loss'].item())
-                                    desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
-                                else:
-                                    loss_meter_mem.update(-1)
+                            
+                            loss_meter.update(results['loss'].item())
+                            desc_str = f'Epoch {epoch} | LR {lr:.6f}'
+                            desc_str += f' | Loss {loss_meter.val:4f}'
+                            if mem_batch:
+                                loss_meter_mem.update(results_mem['loss'].item())
+                                desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
+                            else:
+                                loss_meter_mem.update(-1)
 
-
-                                pbar.set_description(desc_str)
-                                pbar.update(1)
+                            # if self.verbose:
+                            #     pbar.set_description(desc_str)
+                            #     pbar.update(1)
 
                             if self.args.distributed:
                                 dist.barrier()
 
-                        if self.verbose:
-                            pbar.close()
-
-                        print("Loss:",loss_meter.val,' Loss_mem:', loss_meter_mem.val)
-                        # Validation
+                        # if self.verbose:
+                        #     pbar.close()
+                        print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
                         score_dict = self.evaluate(self.val_loader_cate)
+                        print(score_dict)
+                        
+                        valid_score = score_dict['topk_score'] * 100.
+                        valid_score_raw = score_dict['overall']
 
-                        if self.verbose:
-                            valid_score = score_dict['topk_score'] * 100.
-                            valid_score_raw = score_dict['overall']
+                        log_str = ''
+                        log_str += "\nGroup %s Epoch %d: Valid Raw %0.2f Topk %0.2f" % (cateGroup, epoch, valid_score_raw, valid_score)
 
-                            log_str = ''
-                            log_str += "\nGroup %s Epoch %d: Valid Raw %0.2f Topk %0.2f" % (cateGroup, epoch, valid_score_raw, valid_score)
-
-                            print(log_str)
+                        print(log_str)
 
                         if self.args.distributed:
                             dist.barrier()
-                except TerminationError:
-                    print("Termination signal received. Saving model.")
-                    # Backup old last.ckpt if it exists
-                    if os.path.exists(os.path.join(self.args.output, f"{task}_LAST.pth")):
-                        os.rename(
-                            os.path.join(self.args.output, f"{task}_LAST.pth"),
-                            os.path.join(self.args.output, f"{task}_LAST.pth.bak"),
-                        )
-                    self.save(task + "_LAST")
-                    # Remove backup if everything went well
-                    if os.path.exists(os.path.join(self.args.output, "last.ckpt.bak")):
-                        os.remove(os.path.join(self.args.output, "last.ckpt.bak"))
-            
-            if self.verbose:
+                
+                
                 self.save(task + "_LAST")
-                prev_task_id = task_idx - 1
-                if prev_task_id >= 0:
-                    prev_task = id2task[prev_task_id]
-                    print("Removing checkpoint for a previous task")
-                    if os.path.exists(os.path.join(self.args.output, f"{prev_task}_LAST.pth")):
-                        os.remove(os.path.join(self.args.output, f"{prev_task}_LAST.pth"))
-            # ========= Testing =========
-            # self.test(task)
-            
+                # prev_task_id = task_idx - 1
+                # if prev_task_id >= 0:
+                #     prev_task = id2task[prev_task_id]
+                #     print("Removing checkpoint for a previous task")
+                #     if os.path.exists(os.path.join(self.args.output, f"{prev_task}_LAST.pth")):
+                #         os.remove(os.path.join(self.args.output, f"{prev_task}_LAST.pth"))
+                # ========= Testing =========
+                # self.Test()
+        except TerminationError:
+            print("Termination signal received. Saving model.")
+        #     # Backup old last.ckpt if it exists
+        #     if os.path.exists(os.path.join(self.args.output, f"{task}_LAST.pth")):
+        #         os.rename(
+        #             os.path.join(self.args.output, f"{task}_LAST.pth"),
+        #             os.path.join(self.args.output, f"{task}_LAST.pth.bak"),
+        #         )
+        #     self.save(task + "_LAST")
+        #     # Remove backup if everything went well
+        #     if os.path.exists(os.path.join(self.args.output, "last.ckpt.bak")):
+        #         os.remove(os.path.join(self.args.output, "last.ckpt.bak"))    
         try:
             Q_prototype = self.model.module.Q_prototype
             V_prototype = self.model.module.V_prototype
@@ -566,14 +539,17 @@ class Trainer(TrainerBase):
             self.test_loader_dict_all[task] = test_loader
 
         # ========= Testing =========
-        if not load:
-            self.test(self.task_list[-1])
-        else:
+        if self.args.checkpoint != 'None':
             last_path = os.path.join(self.args.checkpoint)
-            if os.path.exists(last_path) and not self.args.now_train:
+            if os.path.exists(last_path+'.pth') and not self.args.now_train:
                 self.load(last_path)
-            task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-            self.test_single(task)
+                task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
+                self.test_single(task)
+        else:
+            task = self.task_list[-1]
+            last_path = os.path.join(self.args.output, f'{task}_LAST')
+            self.load(last_path)
+            self.test(task)
 
     def test_single(self, task, comp=False):
         self.test_loader = self.test_loader_dict_all[task]
@@ -654,33 +630,28 @@ class Trainer(TrainerBase):
 
     def predict(self, loader, dump_path=None):
         self.model.eval()
-        blanks = 0
+        ans_list = []
         with torch.no_grad():
             quesid2ans = {}
-            if self.verbose:
-                pbar = tqdm(total=len(loader), ncols=120, desc="Prediction---")
+            print("Predicting")
+            pbar = tqdm(total=len(loader), ncols=120, desc="Prediction---")
             for i, batch in enumerate(loader):
                 if self.args.distributed:
                     results = self.model.module.test_step(batch)
                 else:
                     results = self.model.test_step(batch)
+
                 if 'blip' in self.args.backbone:
-                    # self.processor.tokenizer.padding_side = 'left'
                     pred_ans = self.processor.tokenizer.batch_decode(results['token_ids'], skip_special_tokens=True)
                 else:
                     pred_ans = results['pred_ans'] # generated_sents
-                if pred_ans[0] == '\n':
-                    blanks+=1
+                ans_list.append(pred_ans)
                 ques_ids = batch['question_ids']
                 for qid, ans in zip(ques_ids, pred_ans):
                     quesid2ans[qid] = ans 
-                if self.verbose:
-                    pbar.update(1)
-            # import pdb;pdb.set_trace()
-            print(f"Blanks:{blanks}")
-            if self.verbose:
-                pbar.close()
-
+                pbar.update(1)
+            pbar.close()
+        print(ans_list[:10])
         if self.args.distributed:
             dist.barrier()
 
@@ -772,16 +743,16 @@ if __name__ == "__main__":
         print(args)
 
         comments = []
-        if args.load is not None:
-            ckpt_str = "_".join(args.load.split('/')[-3:])
-            comments.append(ckpt_str)
+        # if args.load is not None:
+        #     ckpt_str = "_".join(args.load.split('/')[-3:])
+        #     comments.append(ckpt_str)
 
-        else:
-            ckpt_str = 'scrach'
-            comments.append(ckpt_str)
-        if args.comment != '':
-            comments.append(args.comment)
-        comment = '_'.join(comments)
+        # else:
+        #     ckpt_str = 'scrach'
+        #     comments.append(ckpt_str)
+        # if args.comment != '':
+        #     comments.append(args.comment)
+        # comment = '_'.join(comments)
 
         from datetime import datetime
         current_time = datetime.now().strftime('%b%d_%H-%M')

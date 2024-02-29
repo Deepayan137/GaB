@@ -274,7 +274,8 @@ class TrainerBase(object):
         state = {
             "model":self.model.state_dict(),
             "optimizer":self.optim.state_dict(),
-            "scaler": scaler
+            "scaler": scaler,
+            "examplar":self.Examplar_set
         }
         savepath = os.path.join(self.args.output, "%s.pth" % name)
         print(f"Saving model at {savepath}")
@@ -300,6 +301,8 @@ class TrainerBase(object):
         # results = self.model.load_state_dict(state_dict, strict=False)
         result = self.model.load_state_dict(checkpoint["model"], strict=False)
         self.optim.load_state_dict(checkpoint["optimizer"])
+        if "examplar" in checkpoint.keys():
+            self.Examplar_set = checkpoint["examplar"]
         if self.args.fp16:
             self.scaler.load_state_dict(checkpoint["scaler"])
         # self.epoch_idx = checkpoint["epoch_idx"]

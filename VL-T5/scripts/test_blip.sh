@@ -1,5 +1,5 @@
 # The name of experiment
-name='naiveblip'
+name='naiveblip_qtoken'
 
 output=snap/$name
 
@@ -23,4 +23,4 @@ python src/vqacl.py \
         --optim 'blip_adamw' \
         --local-rank 0 \
         --eval_blip True \
-        --checkpoint 'snap/naiveblip_qtoken/q_location_LAST.pth'
+        --checkpoint 'snap/naiveblip_qtoken/q_location_LAST'
