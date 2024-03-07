@@ -21,11 +21,19 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
             param.requires_grad = False
         
         self.vision_model = self.vision_model.eval()
-        print("Freezing qformer")
+        # print("Freezing qformer")
+        # for name, param in self.qformer.named_parameters():
+        #     param.requires_grad = False
         
-        for name, param in self.qformer.named_parameters():
-            param.requires_grad = False
-        
+        print("Freezing qformer all but last layer")
+        num_layers = len(self.qformer.encoder.layer)
+
+        # for i, layer in enumerate(self.qformer.encoder.layer):
+        #     # Freeze all layers except the last one
+        #     if i < num_layers - 1:
+        #         for param in layer.parameters():
+        #             param.requires_grad = False
+
         self.query_tokens.requires_grad = True
         print("freeze vision encoder")
         
@@ -34,7 +42,7 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         # self.eos_token_id = self.processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
 
     @torch.no_grad()
-    def test_step(self, batch, **kwargs):
+    def test_step(self, batch, task, **kwargs):
         self.eval()
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
@@ -42,13 +50,16 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
         
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
-        cate_labels = batch['cate_labels'].to(device)
-        ques_labels = batch['ques_labels'].to(device)
-        output = self.generate(input_ids=input_ids,pixel_values=pixel_values,
+        # cate_labels = batch['cate_labels'].to(device)
+        # ques_labels = batch['ques_labels'].to(device)
+        max_new_tokens = 2
+        if task in ['q_recognition', 'q_type']:
+            max_new_tokens = 3
+        output = self.generate(input_ids=input_ids,
+            pixel_values=pixel_values,
             attention_mask=attention_mask,
-            max_new_tokens=5,
-            eos_token_id=1,
-            repetition_penalty=1.5)
+            max_new_tokens=max_new_tokens,
+            repetition_penalty=1.2)
         result = {}
         result['token_ids'] = output
         result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trainBLIP_continual 
+#SBATCH --job-name=trainBLIP_mem_nohier 
 #SBATCH -p long-disi
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
@@ -7,13 +7,13 @@
 #SBATCH -t 2-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_blip_cl_output3.out
+#SBATCH -o logs/train_blip_1epoch_mem_nohier.out
 #SBATCH --signal=B:SIGTERM@300
 
 # source /home/deepayan.das/miniconda3/envs/vqacl/etc/profile.d/conda.sh
 # conda activate vqacl
 
-name=naiveblip_cl
+name=naiveblip_mem_nohier
 
 output=snap/$name
 
@@ -37,7 +37,7 @@ python -m torch.distributed.launch \
         --epochs 3 \
         --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
-        --output "snap/naiveblip_cl" \
+        --output "snap/naiveblip_mem_nohier" \
         --num_beams 5 \
         --batch_size 80 \
         --valid_batch_size 1 \
@@ -47,4 +47,4 @@ python -m torch.distributed.launch \
         --comp_cate G-1 \
         --now_train \
         --memory \
-        --checkpoint "snap/naiveblip_cl/q_location_LAST.pth"
+        --checkpoint "snap/naiveblip_mem_nohier/q_location_LAST.pth"

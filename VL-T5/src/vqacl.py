@@ -142,7 +142,11 @@ class Trainer(TrainerBase):
         self.task_total_num = torch.zeros(len(self.task_list))
 
         self.M = args.m_size
-        self.Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+        if args.use_class_hierarchy:
+            self.Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+        else:
+            self.Examplar_set = []
+
         self.composition_test_cate = args.comp_cate
 
     def _load_checkpoint(self, checkpoint_name, latest_task_idx):
@@ -154,6 +158,7 @@ class Trainer(TrainerBase):
         print(f'Success to load the checkpoint from the task {checkpoint_name}')
 
     def train(self, load=False):
+        
         if 'blip' in args.backbone:
             from vqa_data_blip import get_loader, get_loader_test, VQADataset, get_loader_memory
         latest_task_idx = -1
@@ -161,17 +166,18 @@ class Trainer(TrainerBase):
             latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
             latest_task_idx = self.task_list.index(latest_task)
             self._load_checkpoint(latest_task, latest_task_idx)
-
+        
         task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
         id2task = {v:k for k, v in task2id.items()}
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        base_state = {
-            "model":self.model.state_dict()
-        }
-        base_state_dict = {k: v.cpu() for k, v in base_state["model"].items()}
+        if args.train_from_scratch:
+            base_state = {
+                "model":self.model.state_dict()
+            }
+            base_state_dict = {k: v.cpu() for k, v in base_state["model"].items()}
         try:
             for i, task in enumerate(self.task_list[latest_task_idx+1:]):  # for each task, train for several epochs
-                if i > 0:
+                if i > 0 and args.train_from_scratch:
                     # print("ending")
                     # sys.exit()
                     self.model.load_state_dict({k: v.to(device) for k, v in base_state_dict.items()})
@@ -190,28 +196,31 @@ class Trainer(TrainerBase):
                             data_info_dicts = json.load(f)
 
                         random.shuffle(data_info_dicts)  # shuffle
-                        each_memory_for_cate = int(each_memory / len(Category_splits))
-                        for cate in Category_splits:
-                            num = 0
-                            self.Examplar_set[cate].append([])
-                            for _d in data_info_dicts:
-                                img_id = _d['img_id']
-                                if img_id in ImgId_cate_map:
-                                    if ImgId_cate_map[img_id] in Category_splits[cate]:
-                                        self.Examplar_set[cate][task_idx - 1].append(_d)
-                                        num += 1
-                                        if num >= each_memory_for_cate:
-                                            break
+                        if args.use_class_hierarchy:
+                            each_memory_for_cate = int(each_memory / len(Category_splits))
+                            for cate in Category_splits:
+                                num = 0
+                                self.Examplar_set[cate].append([])
+                                for _d in data_info_dicts:
+                                    img_id = _d['img_id']
+                                    if img_id in ImgId_cate_map:
+                                        if ImgId_cate_map[img_id] in Category_splits[cate]:
+                                            self.Examplar_set[cate][task_idx - 1].append(_d)
+                                            num += 1
+                                            if num >= each_memory_for_cate:
+                                                break
 
-                        print('Load from Partition_Q_v3......')
-                        for cate in Category_splits:
-                            for i in range(task_idx):
-                                self.Examplar_set[cate][i] = self.Examplar_set[cate][i][: each_memory_for_cate]
+                            print('Load from Partition_Q_v3......')
+                            for cate in Category_splits:
+                                for i in range(task_idx):
+                                    self.Examplar_set[cate][i] = self.Examplar_set[cate][i][: each_memory_for_cate]
 
-                        All_examplar = []
-                        for E_set in self.Examplar_set:
-                            for task_set in self.Examplar_set[E_set]:
-                                All_examplar += task_set
+                            All_examplar = []
+                            for E_set in self.Examplar_set:
+                                for task_set in self.Examplar_set[E_set]:
+                                    All_examplar += task_set
+                        else:
+                            All_examplar = data_info_dicts[:each_memory]
                         # assert len(All_examplar) == M
                         print("# The size of the cate Memory:", len(All_examplar))
                     else:
@@ -312,11 +321,13 @@ class Trainer(TrainerBase):
                     dist.barrier()
 
                 global_step = 0
-                Category_splits_random = random_dic(Category_splits)
-
+                
+                if args.use_class_hierarchy:
+                    Category_splits_random = random_dic(Category_splits)
+                else:
+                    Category_splits_random = {'G1': list(np.arange(80))}
                 for idx, cateGroup in enumerate(Category_splits_random):
                     print('-------- Training the cate group ', cateGroup,' of task ', task,'------')
-
                     self.train_loader_cate = train_loader[cateGroup]
                     self.val_loader_cate = val_loader[cateGroup]
                     self.memory_loader_cate = memory_loader[cateGroup]
@@ -337,9 +348,6 @@ class Trainer(TrainerBase):
                         print("-------- Pass the training for", cateGroup, 'for after composition testing.--------')
                         continue
                     start_epoch = 0
-                    # score_dict = self.evaluate(self.val_loader_cate)
-                    # import pdb;pdb.set_trace()
-                    # print(score_dict)
                     for epoch in range(start_epoch, self.args.epochs):
                         if self.start_epoch is not None:
                             epoch += self.start_epoch
@@ -347,8 +355,8 @@ class Trainer(TrainerBase):
 
                         if self.args.distributed:
                             self.train_loader_cate.sampler.set_epoch(epoch)
-                        # if self.verbose:
-                        #     pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
+                        if args.show_train_progress:
+                            pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
                         epoch_results = {
                             'loss': 0.,
                         }
@@ -380,17 +388,17 @@ class Trainer(TrainerBase):
                             else:
                                 loss_meter_mem.update(-1)
 
-                            # if self.verbose:
-                            #     pbar.set_description(desc_str)
-                            #     pbar.update(1)
+                            if args.show_train_progress:
+                                pbar.set_description(desc_str)
+                                pbar.update(1)
 
                             if self.args.distributed:
                                 dist.barrier()
 
-                        # if self.verbose:
-                        #     pbar.close()
+                        if args.show_train_progress:
+                            pbar.close()
                         print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
-                        score_dict = self.evaluate(self.val_loader_cate)
+                        score_dict = self.evaluate(self.val_loader_cate, task)
                         print(score_dict)
                         
                         valid_score = score_dict['topk_score'] * 100.
@@ -406,34 +414,24 @@ class Trainer(TrainerBase):
                 
                 
                 self.save(task + "_LAST")
-                # prev_task_id = task_idx - 1
-                # if prev_task_id >= 0:
-                #     prev_task = id2task[prev_task_id]
-                #     print("Removing checkpoint for a previous task")
-                #     if os.path.exists(os.path.join(self.args.output, f"{prev_task}_LAST.pth")):
-                #         os.remove(os.path.join(self.args.output, f"{prev_task}_LAST.pth"))
-                # ========= Testing =========
-                # self.Test()
+                prev_task_id = task_idx - 1
+                if prev_task_id >= 0:
+                    prev_task = id2task[prev_task_id]
+                    print("Removing checkpoint for a previous task")
+                    if os.path.exists(os.path.join(self.args.output, f"{prev_task}_LAST.pth")):
+                        os.remove(os.path.join(self.args.output, f"{prev_task}_LAST.pth"))
+                # print("========= Testing =========")
+                self.Test(train_task=task)
         except TerminationError:
-            print("Termination signal received. Saving model.")
-        #     # Backup old last.ckpt if it exists
-        #     if os.path.exists(os.path.join(self.args.output, f"{task}_LAST.pth")):
-        #         os.rename(
-        #             os.path.join(self.args.output, f"{task}_LAST.pth"),
-        #             os.path.join(self.args.output, f"{task}_LAST.pth.bak"),
-        #         )
-        #     self.save(task + "_LAST")
-        #     # Remove backup if everything went well
-        #     if os.path.exists(os.path.join(self.args.output, "last.ckpt.bak")):
-        #         os.remove(os.path.join(self.args.output, "last.ckpt.bak"))    
-        try:
-            Q_prototype = self.model.module.Q_prototype
-            V_prototype = self.model.module.V_prototype
-            torch.save(Q_prototype, args.output + "/Q_prototype.pt")
-            torch.save(V_prototype, args.output + "/V_prototype.pt")
-            print(" ======= Saved the learned prototypes ======= ")
-        except:
-            print('save prototype error')
+            print("Termination signal received.")
+        # try:
+        #     Q_prototype = self.model.module.Q_prototype
+        #     V_prototype = self.model.module.V_prototype
+        #     torch.save(Q_prototype, args.output + "/Q_prototype.pt")
+        #     torch.save(V_prototype, args.output + "/V_prototype.pt")
+        #     print(" ======= Saved the learned prototypes ======= ")
+        # except:
+        #     print('save prototype error')
 
 
     def train_step(self, batch, epoch_results, task_idx, each_memory):
@@ -519,7 +517,7 @@ class Trainer(TrainerBase):
                 lr = self.args.lr
         return results, lr
 
-    def Test(self, load=False):
+    def Test(self, load=False, train_task=None):
 
         for task_idx, task in enumerate(self.task_list):
             print('======================== Now is task "', task, '" ========================')
@@ -539,21 +537,24 @@ class Trainer(TrainerBase):
             self.test_loader_dict_all[task] = test_loader
 
         # ========= Testing =========
-        if self.args.checkpoint != 'None':
-            last_path = os.path.join(self.args.checkpoint)
-            if os.path.exists(last_path+'.pth') and not self.args.now_train:
+        if not train_task:
+            if self.args.checkpoint != 'None':
+                last_path = os.path.join(self.args.checkpoint)
+                if os.path.exists(last_path+'.pth') and not self.args.now_train:
+                    self.load(last_path)
+                    task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
+                    self.test_single(task)
+            else:
+                task = self.task_list[-1]
+                last_path = os.path.join(self.args.output, f'{task}_LAST')
                 self.load(last_path)
-                task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-                self.test_single(task)
+                self.test(task)
         else:
-            task = self.task_list[-1]
-            last_path = os.path.join(self.args.output, f'{task}_LAST')
-            self.load(last_path)
-            self.test(task)
+            self.test(train_task)
 
     def test_single(self, task, comp=False):
         self.test_loader = self.test_loader_dict_all[task]
-        quesid2ans = self.predict(self.test_loader)
+        quesid2ans = self.predict(self.test_loader, task)
         if self.verbose:
             evaluator = self.test_loader.evaluator
             score_dict = evaluator.evaluate(quesid2ans)
@@ -589,15 +590,18 @@ class Trainer(TrainerBase):
 
         # =========== test for all previous tasks
         flag = 1
+        mega_log_dict = {}
+        mega_log_dict[task] = {}
         for test_task in self.coco_Ours:
-            if self.args.now_train:
-                if self.task_iftrain[test_task] == 0:
-                    flag = 0
+            mega_log_dict[task][test_task] = []
+            # if self.args.now_train:
+            #     if self.task_iftrain[test_task] == 0:
+            #         flag = 0
             if flag == 1:
                 self.test_loader = self.test_loader_dict_all[test_task]
                 print(' ===== Test for the task "' + test_task + '"  ======')
 
-                quesid2ans = self.predict(self.test_loader)
+                quesid2ans = self.predict(self.test_loader, test_task)
 
                 if self.verbose:
                     evaluator = self.test_loader.evaluator
@@ -620,31 +624,36 @@ class Trainer(TrainerBase):
                         wandb_log_dict[f'Test_Atypes/{atype}'] = score
 
                     print(test_task, wandb_log_dict)
-
+                    mega_log_dict[task][test_task].append(wandb_log_dict)
                 self.result_matrix[task][test_task] = acc_dict_all['overall']
 
                 if self.args.distributed:
                     dist.barrier()
+        if self.args.log_all_runs:
+            with open(f"{self.args.output}/{self.args.exp_name}.json", 'a') as f:
+                json.dump(mega_log_dict, f, indent=4)
 
 
 
-    def predict(self, loader, dump_path=None):
+    def predict(self, loader, task, dump_path=None):
         self.model.eval()
         ans_list = []
         with torch.no_grad():
             quesid2ans = {}
             print("Predicting")
             pbar = tqdm(total=len(loader), ncols=120, desc="Prediction---")
+            # import pdb;pdb.set_trace()
             for i, batch in enumerate(loader):
                 if self.args.distributed:
                     results = self.model.module.test_step(batch)
                 else:
-                    results = self.model.test_step(batch)
+                    results = self.model.test_step(batch, task)
 
                 if 'blip' in self.args.backbone:
                     pred_ans = self.processor.tokenizer.batch_decode(results['token_ids'], skip_special_tokens=True)
                 else:
                     pred_ans = results['pred_ans'] # generated_sents
+                
                 ans_list.append(pred_ans)
                 ques_ids = batch['question_ids']
                 for qid, ans in zip(ques_ids, pred_ans):
@@ -667,8 +676,8 @@ class Trainer(TrainerBase):
                 evaluator.dump_result(quesid2ans, dump_path)
         return quesid2ans
 
-    def evaluate(self, loader, dump_path=None):
-        quesid2ans = self.predict(loader, dump_path)
+    def evaluate(self, loader, task, dump_path=None):
+        quesid2ans = self.predict(loader, task, dump_path)
 
         if self.verbose:
             evaluator = loader.evaluator
