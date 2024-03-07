@@ -1,15 +1,11 @@
 # The name of experiment
-name=VQAv2_Our
+name=test
 
 output=snap/$name
 
 
 PYTHONPATH=$PYTHONPATH:./src \
-python -m torch.distributed.launch \
-    --nproc_per_node=$1 \
-    --master_port 66666 \
-    src/vqacl.py \
-        --distributed --multiGPU \
+python src/vqacl.py \
         --train karpathy_train \
         --valid karpathy_val \
         --test karpathy_test \
@@ -25,3 +21,4 @@ python -m torch.distributed.launch \
         --batch_size 80 \
         --valid_batch_size 100 \
         --from_scratch \
+        --local-rank 0 \

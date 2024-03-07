@@ -1,5 +1,5 @@
 # The name of experiment
-name=naiveblip_qtoken
+name=naiveblip_test
 
 output=snap/$name
 
@@ -12,19 +12,22 @@ python src/vqacl.py \
         --optim adamw \
         --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
-        --lr 1e-5 \
-        --epochs 1 \
+        --lr 1e-6 \
+        --epochs 2 \
         --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
-        --output 'snap/naiveblip_qtoken' \
+        --output "snap/naiveblip_test" \
         --num_beams 5 \
         --batch_size 80 \
         --valid_batch_size 1 \
+        --from_scratch \
         --optim 'blip_adamw' \
         --m_size 5000 \
         --comp_cate G-1 \
         --now_train \
         --local-rank 0 \
-        # --checkpoint 'snap/naiveblip_cl/q_recognition_LAST.pth' \
-        # --load True \
-        # --memory
+        --show_train_progress True \
+        --log_all_runs True \
+        --use_class_hierarchy False \
+        --memory
+        # --checkpoint "snap/naiveblip_layers/q_location_LAST.pth"

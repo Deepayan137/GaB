@@ -1,3 +1,4 @@
+import os
 import random
 seed = 66666
 
@@ -12,24 +13,28 @@ def random_dic(dicts):
         new_dict[key] = dicts.get(key)
     return new_dict
 
-#  10 lingustic-driven task for VQA v2
-All_task = ['q_location','q_recognition', 'q_judge', 'q_commonsense', 'q_count','q_action', 'q_color', 'q_type', 'q_subcategory','q_causal']
+#  10 lingustic-driven task for VQA v2 after judge
+All_task = ['q_recognition','q_location','q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory','q_causal']
 Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory']
-
+# Comp_task = ['q_causal']
+# All_task = ['q_location', 'q_causal', 'q_commonsense']
 # visual-driven task for VQA v2
 Category_splits = {'G1': [58, 48, 55, 36, 64, 1, 70, 73, 42, 15, 6, 18, 49, 59, 31, 2],\
                    'G2': [19, 77, 22, 9, 24, 53, 12, 13, 78, 50, 47, 41, 32, 28, 54, 23],\
                    'G3': [60, 8, 34, 25, 67, 4, 14, 68, 3, 79, 0, 5, 65, 20, 71, 39], \
                    'G4': [35, 29, 66, 40, 43, 26, 72, 10, 38, 61, 76, 44, 75, 69, 16, 57], \
-                   'G5': [45, 33, 63, 56, 21, 11, 62, 74, 17, 52, 46, 30, 27, 51, 37, 7]}
+                   'G5': [45, 33, 63, 56, 21, 11, 62, 74, 17, 52, 46, 30, 27, 51, 37, 7]
+                   }
 
 
 import json
 
-with open('/home/deepayan.das/projects/VQACL/datasets/QuesId_task_map.json') as fp:
+path = "/home/deepayan.das/projects/VQACL/"
+# path = "/nfs/data_todi/ddas/projects/VQACL/"
+with open(os.path.join(path, 'datasets/QuesId_task_map.json')) as fp:
     QuesId_task_map = json.load(fp)
 
-with open('/home/deepayan.das/projects/VQACL/datasets/ImgId_cate_map.json') as fp:
+with open(os.path.join(path, 'datasets/ImgId_cate_map.json')) as fp:
     ImgId_cate_map = json.load(fp)
 
 print("Success to load the QuesId_task_map and QuesId_task_map")
