@@ -1,0 +1,1488 @@
+[
+{
+    "q_location": {
+        "q_recognition": [
+            {
+                "Test/overall": 26.65,
+                "Test/topk_optimal": 28.74,
+                "Test/topk_not_optimal": 4.82,
+                "Test_Qtypes/what are the": 27.6,
+                "Test_Qtypes/what is": 23.77,
+                "Test_Qtypes/what is the": 29.58,
+                "Test_Qtypes/which": 21.67,
+                "Test_Qtypes/what": 26.38,
+                "Test_Qtypes/what are": 34.24,
+                "Test_Qtypes/what is on the": 24.63,
+                "Test_Qtypes/what is this": 40.57,
+                "Test_Qtypes/what does the": 15.09,
+                "Test_Qtypes/what is in the": 25.99,
+                "Test_Qtypes/what is the name": 7.17,
+                "Test_Qtypes/who is": 20.85,
+                "Test_Atypes/other": 27.14,
+                "Test_Atypes/number": 8.07,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 28.48,
+                "Test/topk_optimal": 31.76,
+                "Test/topk_not_optimal": 7.32,
+                "Test_Qtypes/where is the": 24.75,
+                "Test_Qtypes/where are the": 15.44,
+                "Test_Qtypes/what room is": 92.91,
+                "Test_Atypes/other": 28.52,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 54.35,
+                "Test/topk_optimal": 54.65,
+                "Test/topk_not_optimal": 3.57,
+                "Test_Qtypes/is there a": 50.58,
+                "Test_Qtypes/is the": 56.65,
+                "Test_Qtypes/is that a": 53.12,
+                "Test_Qtypes/are these": 55.54,
+                "Test_Qtypes/is this": 55.96,
+                "Test_Qtypes/are the": 52.75,
+                "Test_Qtypes/are there": 60.75,
+                "Test_Qtypes/are there any": 49.85,
+                "Test_Qtypes/is this a": 56.54,
+                "Test_Qtypes/is it": 53.84,
+                "Test_Qtypes/are": 56.42,
+                "Test_Qtypes/was": 57.55,
+                "Test_Qtypes/is there": 47.65,
+                "Test_Qtypes/is": 39.65,
+                "Test_Qtypes/is this an": 58.66,
+                "Test_Atypes/yes_no": 56.02,
+                "Test_Atypes/other": 32.19,
+                "Test_Atypes/number": 38.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 62.91,
+                "Test/topk_optimal": 63.14,
+                "Test/topk_not_optimal": 12.0,
+                "Test_Qtypes/could": 63.28,
+                "Test_Qtypes/has": 57.24,
+                "Test_Qtypes/does this": 64.84,
+                "Test_Qtypes/does the": 64.28,
+                "Test_Qtypes/can you": 59.89,
+                "Test_Qtypes/do": 62.26,
+                "Test_Qtypes/do you": 64.4,
+                "Test_Atypes/yes_no": 64.1,
+                "Test_Atypes/other": 20.37,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 17.78,
+                "Test/topk_optimal": 17.85,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 18.52,
+                "Test_Qtypes/how many people are in": 10.74,
+                "Test_Qtypes/how many people are": 13.86,
+                "Test_Qtypes/what number is": 17.29,
+                "Test_Atypes/number": 17.93,
+                "Test_Atypes/other": 0.0
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 46.15,
+                "Test/topk_optimal": 46.87,
+                "Test/topk_not_optimal": 9.23,
+                "Test_Qtypes/what is the man": 36.45,
+                "Test_Qtypes/are they": 54.36,
+                "Test_Qtypes/is the man": 49.06,
+                "Test_Qtypes/is the woman": 52.02,
+                "Test_Qtypes/is the person": 46.71,
+                "Test_Qtypes/is he": 54.8,
+                "Test_Qtypes/what is the woman": 32.4,
+                "Test_Qtypes/what is the person": 41.02,
+                "Test_Qtypes/is this person": 54.36,
+                "Test_Qtypes/are": 57.14,
+                "Test_Qtypes/is this": 35.65,
+                "Test_Qtypes/are the": 51.11,
+                "Test_Qtypes/are these": 58.89,
+                "Test_Atypes/other": 34.98,
+                "Test_Atypes/yes_no": 53.47,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 54.28,
+                "Test/topk_optimal": 54.65,
+                "Test/topk_not_optimal": 17.73,
+                "Test_Qtypes/what color is the": 55.41,
+                "Test_Qtypes/what color are the": 43.6,
+                "Test_Qtypes/what is the color of the": 58.12,
+                "Test_Qtypes/what color is": 64.86,
+                "Test_Qtypes/what color": 54.23,
+                "Test_Atypes/other": 54.28
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 21.16,
+                "Test/topk_optimal": 22.64,
+                "Test/topk_not_optimal": 4.19,
+                "Test_Qtypes/what kind of": 21.99,
+                "Test_Qtypes/what type of": 20.0,
+                "Test_Atypes/other": 21.18,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 45.16,
+                "Test/topk_optimal": 47.72,
+                "Test/topk_not_optimal": 2.34,
+                "Test_Qtypes/none of the above": 46.98,
+                "Test_Qtypes/what brand": 17.28,
+                "Test_Qtypes/what animal is": 59.2,
+                "Test_Qtypes/what sport is": 71.92,
+                "Test_Qtypes/what time": 10.5,
+                "Test_Atypes/other": 38.44,
+                "Test_Atypes/yes_no": 63.95,
+                "Test_Atypes/number": 2.53
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 2.94,
+                "Test/topk_optimal": 3.74,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/why": 3.89,
+                "Test_Qtypes/why is the": 0.0,
+                "Test_Atypes/other": 2.96,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_judge": {
+        "q_recognition": [
+            {
+                "Test/overall": 22.53,
+                "Test/topk_optimal": 24.36,
+                "Test/topk_not_optimal": 3.53,
+                "Test_Qtypes/what are the": 24.46,
+                "Test_Qtypes/what is": 18.71,
+                "Test_Qtypes/what is the": 22.85,
+                "Test_Qtypes/which": 19.44,
+                "Test_Qtypes/what": 23.17,
+                "Test_Qtypes/what are": 29.39,
+                "Test_Qtypes/what is on the": 16.93,
+                "Test_Qtypes/what is this": 40.99,
+                "Test_Qtypes/what does the": 17.36,
+                "Test_Qtypes/what is in the": 21.89,
+                "Test_Qtypes/what is the name": 5.0,
+                "Test_Qtypes/who is": 20.0,
+                "Test_Atypes/other": 22.88,
+                "Test_Atypes/number": 9.7,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 26.97,
+                "Test/topk_optimal": 30.42,
+                "Test/topk_not_optimal": 4.76,
+                "Test_Qtypes/where is the": 22.86,
+                "Test_Qtypes/where are the": 21.08,
+                "Test_Qtypes/what room is": 73.64,
+                "Test_Atypes/other": 27.02,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 80.74,
+                "Test/topk_optimal": 81.07,
+                "Test/topk_not_optimal": 25.48,
+                "Test_Qtypes/is there a": 79.27,
+                "Test_Qtypes/is the": 78.22,
+                "Test_Qtypes/is that a": 80.73,
+                "Test_Qtypes/are these": 84.59,
+                "Test_Qtypes/is this": 81.6,
+                "Test_Qtypes/are the": 75.66,
+                "Test_Qtypes/are there": 79.93,
+                "Test_Qtypes/are there any": 76.89,
+                "Test_Qtypes/is this a": 88.06,
+                "Test_Qtypes/is it": 87.91,
+                "Test_Qtypes/are": 75.76,
+                "Test_Qtypes/was": 90.1,
+                "Test_Qtypes/is there": 78.5,
+                "Test_Qtypes/is": 77.33,
+                "Test_Qtypes/is this an": 89.07,
+                "Test_Atypes/yes_no": 82.29,
+                "Test_Atypes/other": 60.06,
+                "Test_Atypes/number": 78.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 74.99,
+                "Test/topk_optimal": 75.0,
+                "Test/topk_not_optimal": 74.0,
+                "Test_Qtypes/could": 77.61,
+                "Test_Qtypes/has": 68.46,
+                "Test_Qtypes/does this": 83.27,
+                "Test_Qtypes/does the": 76.79,
+                "Test_Qtypes/can you": 67.28,
+                "Test_Qtypes/do": 67.11,
+                "Test_Qtypes/do you": 74.4,
+                "Test_Atypes/yes_no": 75.51,
+                "Test_Atypes/other": 54.44,
+                "Test_Atypes/number": 75.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 12.49,
+                "Test/topk_optimal": 12.54,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 12.64,
+                "Test_Qtypes/how many people are in": 7.58,
+                "Test_Qtypes/how many people are": 12.76,
+                "Test_Qtypes/what number is": 13.75,
+                "Test_Atypes/number": 12.57,
+                "Test_Atypes/other": 2.73
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 64.99,
+                "Test/topk_optimal": 66.09,
+                "Test/topk_not_optimal": 8.08,
+                "Test_Qtypes/what is the man": 35.39,
+                "Test_Qtypes/are they": 83.88,
+                "Test_Qtypes/is the man": 80.42,
+                "Test_Qtypes/is the woman": 83.74,
+                "Test_Qtypes/is the person": 78.1,
+                "Test_Qtypes/is he": 80.81,
+                "Test_Qtypes/what is the woman": 32.6,
+                "Test_Qtypes/what is the person": 34.59,
+                "Test_Qtypes/is this person": 83.33,
+                "Test_Qtypes/are": 71.43,
+                "Test_Qtypes/is this": 79.13,
+                "Test_Qtypes/are the": 78.33,
+                "Test_Qtypes/are these": 65.56,
+                "Test_Atypes/other": 36.5,
+                "Test_Atypes/yes_no": 83.51,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 46.42,
+                "Test/topk_optimal": 46.7,
+                "Test/topk_not_optimal": 19.09,
+                "Test_Qtypes/what color is the": 48.38,
+                "Test_Qtypes/what color are the": 37.56,
+                "Test_Qtypes/what is the color of the": 46.12,
+                "Test_Qtypes/what color is": 46.76,
+                "Test_Qtypes/what color": 46.24,
+                "Test_Atypes/other": 46.42
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 18.7,
+                "Test/topk_optimal": 20.12,
+                "Test/topk_not_optimal": 2.44,
+                "Test_Qtypes/what kind of": 19.43,
+                "Test_Qtypes/what type of": 17.69,
+                "Test_Atypes/other": 18.72,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 48.19,
+                "Test/topk_optimal": 50.93,
+                "Test/topk_not_optimal": 2.34,
+                "Test_Qtypes/none of the above": 51.81,
+                "Test_Qtypes/what brand": 15.11,
+                "Test_Qtypes/what animal is": 63.36,
+                "Test_Qtypes/what sport is": 71.15,
+                "Test_Qtypes/what time": 6.92,
+                "Test_Atypes/other": 37.24,
+                "Test_Atypes/yes_no": 74.66,
+                "Test_Atypes/number": 4.4
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 8.22,
+                "Test/topk_optimal": 9.1,
+                "Test/topk_not_optimal": 5.0,
+                "Test_Qtypes/why": 8.99,
+                "Test_Qtypes/why is the": 5.83,
+                "Test_Atypes/other": 8.11,
+                "Test_Atypes/number": 30.0
+            }
+        ]
+    }
+},{
+    "q_commonsense": {
+        "q_recognition": [
+            {
+                "Test/overall": 21.87,
+                "Test/topk_optimal": 23.58,
+                "Test/topk_not_optimal": 4.04,
+                "Test_Qtypes/what are the": 24.92,
+                "Test_Qtypes/what is": 19.34,
+                "Test_Qtypes/what is the": 23.75,
+                "Test_Qtypes/which": 16.65,
+                "Test_Qtypes/what": 21.98,
+                "Test_Qtypes/what are": 26.79,
+                "Test_Qtypes/what is on the": 16.93,
+                "Test_Qtypes/what is this": 36.87,
+                "Test_Qtypes/what does the": 12.88,
+                "Test_Qtypes/what is in the": 18.94,
+                "Test_Qtypes/what is the name": 5.65,
+                "Test_Qtypes/who is": 20.47,
+                "Test_Atypes/other": 22.19,
+                "Test_Atypes/number": 9.7,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 32.45,
+                "Test/topk_optimal": 36.69,
+                "Test/topk_not_optimal": 5.12,
+                "Test_Qtypes/where is the": 27.34,
+                "Test_Qtypes/where are the": 24.11,
+                "Test_Qtypes/what room is": 93.45,
+                "Test_Atypes/other": 32.51,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 76.53,
+                "Test/topk_optimal": 76.81,
+                "Test/topk_not_optimal": 29.52,
+                "Test_Qtypes/is there a": 75.0,
+                "Test_Qtypes/is the": 73.28,
+                "Test_Qtypes/is that a": 80.1,
+                "Test_Qtypes/are these": 82.91,
+                "Test_Qtypes/is this": 77.69,
+                "Test_Qtypes/are the": 72.14,
+                "Test_Qtypes/are there": 80.36,
+                "Test_Qtypes/are there any": 73.04,
+                "Test_Qtypes/is this a": 83.92,
+                "Test_Qtypes/is it": 76.97,
+                "Test_Qtypes/are": 71.44,
+                "Test_Qtypes/was": 79.08,
+                "Test_Qtypes/is there": 77.43,
+                "Test_Qtypes/is": 74.04,
+                "Test_Qtypes/is this an": 85.36,
+                "Test_Atypes/yes_no": 78.06,
+                "Test_Atypes/other": 56.2,
+                "Test_Atypes/number": 60.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 70.63,
+                "Test/topk_optimal": 70.67,
+                "Test/topk_not_optimal": 62.0,
+                "Test_Qtypes/could": 77.46,
+                "Test_Qtypes/has": 67.24,
+                "Test_Qtypes/does this": 75.48,
+                "Test_Qtypes/does the": 70.58,
+                "Test_Qtypes/can you": 60.98,
+                "Test_Qtypes/do": 64.78,
+                "Test_Qtypes/do you": 77.62,
+                "Test_Atypes/yes_no": 71.36,
+                "Test_Atypes/other": 43.33,
+                "Test_Atypes/number": 45.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 5.62,
+                "Test/topk_optimal": 5.64,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 5.87,
+                "Test_Qtypes/how many people are in": 1.05,
+                "Test_Qtypes/how many people are": 2.68,
+                "Test_Qtypes/what number is": 17.92,
+                "Test_Atypes/number": 5.66,
+                "Test_Atypes/other": 1.36
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 61.22,
+                "Test/topk_optimal": 62.21,
+                "Test/topk_not_optimal": 10.38,
+                "Test_Qtypes/what is the man": 36.45,
+                "Test_Qtypes/are they": 77.7,
+                "Test_Qtypes/is the man": 70.77,
+                "Test_Qtypes/is the woman": 79.7,
+                "Test_Qtypes/is the person": 72.41,
+                "Test_Qtypes/is he": 72.11,
+                "Test_Qtypes/what is the woman": 34.69,
+                "Test_Qtypes/what is the person": 41.63,
+                "Test_Qtypes/is this person": 76.79,
+                "Test_Qtypes/are": 42.86,
+                "Test_Qtypes/is this": 83.48,
+                "Test_Qtypes/are the": 82.22,
+                "Test_Qtypes/are these": 57.78,
+                "Test_Atypes/other": 39.31,
+                "Test_Atypes/yes_no": 75.51,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 44.46,
+                "Test/topk_optimal": 44.78,
+                "Test/topk_not_optimal": 12.27,
+                "Test_Qtypes/what color is the": 45.11,
+                "Test_Qtypes/what color are the": 36.16,
+                "Test_Qtypes/what is the color of the": 46.94,
+                "Test_Qtypes/what color is": 54.01,
+                "Test_Qtypes/what color": 45.64,
+                "Test_Atypes/other": 44.46
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 17.99,
+                "Test/topk_optimal": 19.28,
+                "Test/topk_not_optimal": 3.14,
+                "Test_Qtypes/what kind of": 18.23,
+                "Test_Qtypes/what type of": 17.65,
+                "Test_Atypes/other": 18.0,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 48.22,
+                "Test/topk_optimal": 50.84,
+                "Test/topk_not_optimal": 4.29,
+                "Test_Qtypes/none of the above": 50.94,
+                "Test_Qtypes/what brand": 16.52,
+                "Test_Qtypes/what animal is": 60.71,
+                "Test_Qtypes/what sport is": 73.77,
+                "Test_Qtypes/what time": 12.33,
+                "Test_Atypes/other": 39.96,
+                "Test_Atypes/yes_no": 70.17,
+                "Test_Atypes/number": 2.67
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 4.52,
+                "Test/topk_optimal": 5.35,
+                "Test/topk_not_optimal": 1.43,
+                "Test_Qtypes/why": 5.57,
+                "Test_Qtypes/why is the": 1.25,
+                "Test_Atypes/other": 4.54,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_count": {
+        "q_recognition": [
+            {
+                "Test/overall": 25.24,
+                "Test/topk_optimal": 27.19,
+                "Test/topk_not_optimal": 4.9,
+                "Test_Qtypes/what are the": 29.74,
+                "Test_Qtypes/what is": 21.45,
+                "Test_Qtypes/what is the": 27.87,
+                "Test_Qtypes/which": 21.3,
+                "Test_Qtypes/what": 25.54,
+                "Test_Qtypes/what are": 31.76,
+                "Test_Qtypes/what is on the": 17.75,
+                "Test_Qtypes/what is this": 41.15,
+                "Test_Qtypes/what does the": 21.47,
+                "Test_Qtypes/what is in the": 22.26,
+                "Test_Qtypes/what is the name": 6.3,
+                "Test_Qtypes/who is": 6.7,
+                "Test_Atypes/other": 25.76,
+                "Test_Atypes/number": 5.78,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 27.09,
+                "Test/topk_optimal": 30.26,
+                "Test/topk_not_optimal": 6.59,
+                "Test_Qtypes/where is the": 21.23,
+                "Test_Qtypes/where are the": 21.71,
+                "Test_Qtypes/what room is": 84.91,
+                "Test_Atypes/other": 27.13,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 79.66,
+                "Test/topk_optimal": 80.03,
+                "Test/topk_not_optimal": 17.38,
+                "Test_Qtypes/is there a": 81.01,
+                "Test_Qtypes/is the": 76.96,
+                "Test_Qtypes/is that a": 82.6,
+                "Test_Qtypes/are these": 79.49,
+                "Test_Qtypes/is this": 79.2,
+                "Test_Qtypes/are the": 75.38,
+                "Test_Qtypes/are there": 80.52,
+                "Test_Qtypes/are there any": 80.67,
+                "Test_Qtypes/is this a": 85.65,
+                "Test_Qtypes/is it": 84.75,
+                "Test_Qtypes/are": 75.46,
+                "Test_Qtypes/was": 87.96,
+                "Test_Qtypes/is there": 79.75,
+                "Test_Qtypes/is": 77.47,
+                "Test_Qtypes/is this an": 88.25,
+                "Test_Atypes/yes_no": 82.05,
+                "Test_Atypes/other": 47.69,
+                "Test_Atypes/number": 78.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 79.04,
+                "Test/topk_optimal": 79.23,
+                "Test/topk_not_optimal": 36.0,
+                "Test_Qtypes/could": 82.24,
+                "Test_Qtypes/has": 75.77,
+                "Test_Qtypes/does this": 86.29,
+                "Test_Qtypes/does the": 75.08,
+                "Test_Qtypes/can you": 77.17,
+                "Test_Qtypes/do": 72.52,
+                "Test_Qtypes/do you": 89.64,
+                "Test_Atypes/yes_no": 80.31,
+                "Test_Atypes/other": 32.22,
+                "Test_Atypes/number": 30.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 50.79,
+                "Test/topk_optimal": 50.97,
+                "Test/topk_not_optimal": 3.0,
+                "Test_Qtypes/how many": 50.65,
+                "Test_Qtypes/how many people are in": 62.0,
+                "Test_Qtypes/how many people are": 52.4,
+                "Test_Qtypes/what number is": 27.08,
+                "Test_Atypes/number": 51.17,
+                "Test_Atypes/other": 5.45
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 63.12,
+                "Test/topk_optimal": 64.15,
+                "Test/topk_not_optimal": 10.38,
+                "Test_Qtypes/what is the man": 32.27,
+                "Test_Qtypes/are they": 80.42,
+                "Test_Qtypes/is the man": 76.55,
+                "Test_Qtypes/is the woman": 80.4,
+                "Test_Qtypes/is the person": 83.04,
+                "Test_Qtypes/is he": 82.2,
+                "Test_Qtypes/what is the woman": 27.19,
+                "Test_Qtypes/what is the person": 39.39,
+                "Test_Qtypes/is this person": 83.46,
+                "Test_Qtypes/are": 42.86,
+                "Test_Qtypes/is this": 78.26,
+                "Test_Qtypes/are the": 82.78,
+                "Test_Qtypes/are these": 62.22,
+                "Test_Atypes/other": 33.33,
+                "Test_Atypes/yes_no": 82.37,
+                "Test_Atypes/number": 50.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 39.77,
+                "Test/topk_optimal": 40.07,
+                "Test/topk_not_optimal": 9.55,
+                "Test_Qtypes/what color is the": 40.83,
+                "Test_Qtypes/what color are the": 31.07,
+                "Test_Qtypes/what is the color of the": 35.06,
+                "Test_Qtypes/what color is": 47.46,
+                "Test_Qtypes/what color": 43.69,
+                "Test_Atypes/other": 39.77
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 20.58,
+                "Test/topk_optimal": 21.98,
+                "Test/topk_not_optimal": 4.53,
+                "Test_Qtypes/what kind of": 22.65,
+                "Test_Qtypes/what type of": 17.67,
+                "Test_Atypes/other": 20.6,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 48.15,
+                "Test/topk_optimal": 50.93,
+                "Test/topk_not_optimal": 1.56,
+                "Test_Qtypes/none of the above": 52.27,
+                "Test_Qtypes/what brand": 14.13,
+                "Test_Qtypes/what animal is": 58.14,
+                "Test_Qtypes/what sport is": 73.38,
+                "Test_Qtypes/what time": 6.17,
+                "Test_Atypes/other": 35.79,
+                "Test_Atypes/yes_no": 76.7,
+                "Test_Atypes/number": 6.93
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 3.5,
+                "Test/topk_optimal": 3.68,
+                "Test/topk_not_optimal": 2.86,
+                "Test_Qtypes/why": 4.43,
+                "Test_Qtypes/why is the": 0.62,
+                "Test_Atypes/other": 3.52,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_action": {
+        "q_recognition": [
+            {
+                "Test/overall": 28.06,
+                "Test/topk_optimal": 30.27,
+                "Test/topk_not_optimal": 5.03,
+                "Test_Qtypes/what are the": 28.74,
+                "Test_Qtypes/what is": 25.91,
+                "Test_Qtypes/what is the": 31.33,
+                "Test_Qtypes/which": 21.3,
+                "Test_Qtypes/what": 26.73,
+                "Test_Qtypes/what are": 35.39,
+                "Test_Qtypes/what is on the": 26.54,
+                "Test_Qtypes/what is this": 35.99,
+                "Test_Qtypes/what does the": 25.95,
+                "Test_Qtypes/what is in the": 34.33,
+                "Test_Qtypes/what is the name": 4.13,
+                "Test_Qtypes/who is": 18.87,
+                "Test_Atypes/other": 28.43,
+                "Test_Atypes/number": 14.22,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 31.18,
+                "Test/topk_optimal": 34.93,
+                "Test/topk_not_optimal": 6.95,
+                "Test_Qtypes/where is the": 26.58,
+                "Test_Qtypes/where are the": 23.35,
+                "Test_Qtypes/what room is": 86.91,
+                "Test_Atypes/other": 31.23,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 79.54,
+                "Test/topk_optimal": 79.9,
+                "Test/topk_not_optimal": 18.33,
+                "Test_Qtypes/is there a": 78.83,
+                "Test_Qtypes/is the": 76.81,
+                "Test_Qtypes/is that a": 86.25,
+                "Test_Qtypes/are these": 86.46,
+                "Test_Qtypes/is this": 79.71,
+                "Test_Qtypes/are the": 76.66,
+                "Test_Qtypes/are there": 79.93,
+                "Test_Qtypes/are there any": 78.67,
+                "Test_Qtypes/is this a": 85.3,
+                "Test_Qtypes/is it": 80.91,
+                "Test_Qtypes/are": 75.35,
+                "Test_Qtypes/was": 88.57,
+                "Test_Qtypes/is there": 77.7,
+                "Test_Qtypes/is": 76.63,
+                "Test_Qtypes/is this an": 88.87,
+                "Test_Atypes/yes_no": 81.78,
+                "Test_Atypes/other": 50.22,
+                "Test_Atypes/number": 12.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 78.19,
+                "Test/topk_optimal": 78.38,
+                "Test/topk_not_optimal": 36.0,
+                "Test_Qtypes/could": 77.61,
+                "Test_Qtypes/has": 74.55,
+                "Test_Qtypes/does this": 85.6,
+                "Test_Qtypes/does the": 78.35,
+                "Test_Qtypes/can you": 68.8,
+                "Test_Qtypes/do": 71.64,
+                "Test_Qtypes/do you": 84.17,
+                "Test_Atypes/yes_no": 79.25,
+                "Test_Atypes/other": 39.63,
+                "Test_Atypes/number": 30.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 48.28,
+                "Test/topk_optimal": 48.45,
+                "Test/topk_not_optimal": 3.0,
+                "Test_Qtypes/how many": 47.32,
+                "Test_Qtypes/how many people are in": 61.68,
+                "Test_Qtypes/how many people are": 56.87,
+                "Test_Qtypes/what number is": 22.92,
+                "Test_Atypes/number": 48.66,
+                "Test_Atypes/other": 2.73
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 67.17,
+                "Test/topk_optimal": 68.16,
+                "Test/topk_not_optimal": 16.15,
+                "Test_Qtypes/what is the man": 41.49,
+                "Test_Qtypes/are they": 83.15,
+                "Test_Qtypes/is the man": 80.21,
+                "Test_Qtypes/is the woman": 82.83,
+                "Test_Qtypes/is the person": 78.86,
+                "Test_Qtypes/is he": 81.3,
+                "Test_Qtypes/what is the woman": 34.69,
+                "Test_Qtypes/what is the person": 44.08,
+                "Test_Qtypes/is this person": 86.41,
+                "Test_Qtypes/are": 42.86,
+                "Test_Qtypes/is this": 82.17,
+                "Test_Qtypes/are the": 83.89,
+                "Test_Qtypes/are these": 73.33,
+                "Test_Atypes/other": 41.55,
+                "Test_Atypes/yes_no": 83.85,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 44.27,
+                "Test/topk_optimal": 44.6,
+                "Test/topk_not_optimal": 12.27,
+                "Test_Qtypes/what color is the": 45.08,
+                "Test_Qtypes/what color are the": 36.22,
+                "Test_Qtypes/what is the color of the": 40.59,
+                "Test_Qtypes/what color is": 49.93,
+                "Test_Qtypes/what color": 50.67,
+                "Test_Atypes/other": 44.27
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 20.27,
+                "Test/topk_optimal": 21.7,
+                "Test/topk_not_optimal": 3.84,
+                "Test_Qtypes/what kind of": 21.67,
+                "Test_Qtypes/what type of": 18.3,
+                "Test_Atypes/other": 20.29,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 48.42,
+                "Test/topk_optimal": 51.17,
+                "Test/topk_not_optimal": 2.34,
+                "Test_Qtypes/none of the above": 52.48,
+                "Test_Qtypes/what brand": 13.37,
+                "Test_Qtypes/what animal is": 53.98,
+                "Test_Qtypes/what sport is": 74.54,
+                "Test_Qtypes/what time": 10.92,
+                "Test_Atypes/other": 37.08,
+                "Test_Atypes/yes_no": 75.54,
+                "Test_Atypes/number": 4.8
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 1.73,
+                "Test/topk_optimal": 1.61,
+                "Test/topk_not_optimal": 2.14,
+                "Test_Qtypes/why": 2.08,
+                "Test_Qtypes/why is the": 0.62,
+                "Test_Atypes/other": 1.73,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_color": {
+        "q_recognition": [
+            {
+                "Test/overall": 23.69,
+                "Test/topk_optimal": 25.63,
+                "Test/topk_not_optimal": 3.51,
+                "Test_Qtypes/what are the": 23.48,
+                "Test_Qtypes/what is": 19.65,
+                "Test_Qtypes/what is the": 27.97,
+                "Test_Qtypes/which": 18.07,
+                "Test_Qtypes/what": 22.57,
+                "Test_Qtypes/what are": 31.33,
+                "Test_Qtypes/what is on the": 16.88,
+                "Test_Qtypes/what is this": 36.72,
+                "Test_Qtypes/what does the": 19.39,
+                "Test_Qtypes/what is in the": 28.57,
+                "Test_Qtypes/what is the name": 4.13,
+                "Test_Qtypes/who is": 19.15,
+                "Test_Atypes/other": 23.94,
+                "Test_Atypes/number": 13.85,
+                "Test_Atypes/yes_no": 50.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 29.62,
+                "Test/topk_optimal": 33.19,
+                "Test/topk_not_optimal": 6.59,
+                "Test_Qtypes/where is the": 23.57,
+                "Test_Qtypes/where are the": 23.04,
+                "Test_Qtypes/what room is": 92.36,
+                "Test_Atypes/other": 29.67,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 78.47,
+                "Test/topk_optimal": 78.86,
+                "Test/topk_not_optimal": 13.1,
+                "Test_Qtypes/is there a": 79.9,
+                "Test_Qtypes/is the": 76.19,
+                "Test_Qtypes/is that a": 78.33,
+                "Test_Qtypes/are these": 85.06,
+                "Test_Qtypes/is this": 77.62,
+                "Test_Qtypes/are the": 75.13,
+                "Test_Qtypes/are there": 77.22,
+                "Test_Qtypes/are there any": 80.0,
+                "Test_Qtypes/is this a": 82.83,
+                "Test_Qtypes/is it": 79.09,
+                "Test_Qtypes/are": 74.1,
+                "Test_Qtypes/was": 86.94,
+                "Test_Qtypes/is there": 78.93,
+                "Test_Qtypes/is": 78.49,
+                "Test_Qtypes/is this an": 86.8,
+                "Test_Atypes/yes_no": 81.53,
+                "Test_Atypes/other": 37.59,
+                "Test_Atypes/number": 58.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 76.29,
+                "Test/topk_optimal": 76.39,
+                "Test/topk_not_optimal": 54.0,
+                "Test_Qtypes/could": 84.78,
+                "Test_Qtypes/has": 75.12,
+                "Test_Qtypes/does this": 83.35,
+                "Test_Qtypes/does the": 72.75,
+                "Test_Qtypes/can you": 69.78,
+                "Test_Qtypes/do": 70.69,
+                "Test_Qtypes/do you": 81.9,
+                "Test_Atypes/yes_no": 77.62,
+                "Test_Atypes/other": 23.7,
+                "Test_Atypes/number": 75.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 46.63,
+                "Test/topk_optimal": 46.8,
+                "Test/topk_not_optimal": 3.0,
+                "Test_Qtypes/how many": 46.1,
+                "Test_Qtypes/how many people are in": 58.95,
+                "Test_Qtypes/how many people are": 53.01,
+                "Test_Qtypes/what number is": 14.58,
+                "Test_Atypes/number": 47.01,
+                "Test_Atypes/other": 1.36
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 63.26,
+                "Test/topk_optimal": 64.24,
+                "Test/topk_not_optimal": 12.69,
+                "Test_Qtypes/what is the man": 31.84,
+                "Test_Qtypes/are they": 82.36,
+                "Test_Qtypes/is the man": 79.69,
+                "Test_Qtypes/is the woman": 82.73,
+                "Test_Qtypes/is the person": 74.3,
+                "Test_Qtypes/is he": 80.73,
+                "Test_Qtypes/what is the woman": 27.4,
+                "Test_Qtypes/what is the person": 34.69,
+                "Test_Qtypes/is this person": 81.67,
+                "Test_Qtypes/are": 57.14,
+                "Test_Qtypes/is this": 82.61,
+                "Test_Qtypes/are the": 88.33,
+                "Test_Qtypes/are these": 62.22,
+                "Test_Atypes/other": 32.12,
+                "Test_Atypes/yes_no": 83.37,
+                "Test_Atypes/number": 50.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 60.3,
+                "Test/topk_optimal": 60.77,
+                "Test/topk_not_optimal": 13.64,
+                "Test_Qtypes/what color is the": 61.12,
+                "Test_Qtypes/what color are the": 50.21,
+                "Test_Qtypes/what is the color of the": 65.76,
+                "Test_Qtypes/what color is": 72.96,
+                "Test_Qtypes/what color": 59.06,
+                "Test_Atypes/other": 60.3
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 19.3,
+                "Test/topk_optimal": 20.65,
+                "Test/topk_not_optimal": 3.84,
+                "Test_Qtypes/what kind of": 18.37,
+                "Test_Qtypes/what type of": 20.61,
+                "Test_Atypes/other": 19.32,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 46.75,
+                "Test/topk_optimal": 49.38,
+                "Test/topk_not_optimal": 2.73,
+                "Test_Qtypes/none of the above": 52.16,
+                "Test_Qtypes/what brand": 10.87,
+                "Test_Qtypes/what animal is": 53.1,
+                "Test_Qtypes/what sport is": 71.15,
+                "Test_Qtypes/what time": 0.75,
+                "Test_Atypes/other": 33.41,
+                "Test_Atypes/yes_no": 77.42,
+                "Test_Atypes/number": 3.07
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 0.15,
+                "Test/topk_optimal": 0.0,
+                "Test/topk_not_optimal": 0.71,
+                "Test_Qtypes/why": 0.0,
+                "Test_Qtypes/why is the": 0.62,
+                "Test_Atypes/other": 0.15,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_type": {
+        "q_recognition": [
+            {
+                "Test/overall": 27.66,
+                "Test/topk_optimal": 29.78,
+                "Test/topk_not_optimal": 5.57,
+                "Test_Qtypes/what are the": 24.9,
+                "Test_Qtypes/what is": 24.63,
+                "Test_Qtypes/what is the": 30.94,
+                "Test_Qtypes/which": 20.89,
+                "Test_Qtypes/what": 28.8,
+                "Test_Qtypes/what are": 31.09,
+                "Test_Qtypes/what is on the": 24.63,
+                "Test_Qtypes/what is this": 35.68,
+                "Test_Qtypes/what does the": 23.19,
+                "Test_Qtypes/what is in the": 28.34,
+                "Test_Qtypes/what is the name": 0.65,
+                "Test_Qtypes/who is": 24.25,
+                "Test_Atypes/other": 28.1,
+                "Test_Atypes/number": 11.19,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 27.3,
+                "Test/topk_optimal": 30.62,
+                "Test/topk_not_optimal": 5.85,
+                "Test_Qtypes/where is the": 21.76,
+                "Test_Qtypes/where are the": 17.85,
+                "Test_Qtypes/what room is": 94.55,
+                "Test_Atypes/other": 27.34,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 79.75,
+                "Test/topk_optimal": 80.07,
+                "Test/topk_not_optimal": 25.71,
+                "Test_Qtypes/is there a": 80.4,
+                "Test_Qtypes/is the": 77.21,
+                "Test_Qtypes/is that a": 82.92,
+                "Test_Qtypes/are these": 82.31,
+                "Test_Qtypes/is this": 79.78,
+                "Test_Qtypes/are the": 77.12,
+                "Test_Qtypes/are there": 80.0,
+                "Test_Qtypes/are there any": 82.37,
+                "Test_Qtypes/is this a": 84.76,
+                "Test_Qtypes/is it": 81.31,
+                "Test_Qtypes/are": 74.87,
+                "Test_Qtypes/was": 87.76,
+                "Test_Qtypes/is there": 79.67,
+                "Test_Qtypes/is": 79.39,
+                "Test_Qtypes/is this an": 83.81,
+                "Test_Atypes/yes_no": 81.76,
+                "Test_Atypes/other": 53.22,
+                "Test_Atypes/number": 32.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 77.52,
+                "Test/topk_optimal": 77.63,
+                "Test/topk_not_optimal": 54.0,
+                "Test_Qtypes/could": 81.19,
+                "Test_Qtypes/has": 77.4,
+                "Test_Qtypes/does this": 82.26,
+                "Test_Qtypes/does the": 76.48,
+                "Test_Qtypes/can you": 70.54,
+                "Test_Qtypes/do": 70.63,
+                "Test_Qtypes/do you": 85.48,
+                "Test_Atypes/yes_no": 78.6,
+                "Test_Atypes/other": 34.81,
+                "Test_Atypes/number": 75.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 46.39,
+                "Test/topk_optimal": 46.56,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 45.78,
+                "Test_Qtypes/how many people are in": 60.95,
+                "Test_Qtypes/how many people are": 52.15,
+                "Test_Qtypes/what number is": 16.67,
+                "Test_Atypes/number": 46.77,
+                "Test_Atypes/other": 1.36
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 65.15,
+                "Test/topk_optimal": 66.22,
+                "Test/topk_not_optimal": 10.38,
+                "Test_Qtypes/what is the man": 36.52,
+                "Test_Qtypes/are they": 84.55,
+                "Test_Qtypes/is the man": 78.5,
+                "Test_Qtypes/is the woman": 84.14,
+                "Test_Qtypes/is the person": 73.04,
+                "Test_Qtypes/is he": 82.2,
+                "Test_Qtypes/what is the woman": 35.1,
+                "Test_Qtypes/what is the person": 39.69,
+                "Test_Qtypes/is this person": 81.67,
+                "Test_Qtypes/are": 57.14,
+                "Test_Qtypes/is this": 82.61,
+                "Test_Qtypes/are the": 77.22,
+                "Test_Qtypes/are these": 62.22,
+                "Test_Atypes/other": 37.43,
+                "Test_Atypes/yes_no": 83.19,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 55.51,
+                "Test/topk_optimal": 55.92,
+                "Test/topk_not_optimal": 15.0,
+                "Test_Qtypes/what color is the": 56.48,
+                "Test_Qtypes/what color are the": 45.4,
+                "Test_Qtypes/what is the color of the": 57.06,
+                "Test_Qtypes/what color is": 68.94,
+                "Test_Qtypes/what color": 54.43,
+                "Test_Atypes/other": 55.51
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 30.21,
+                "Test/topk_optimal": 32.36,
+                "Test/topk_not_optimal": 5.58,
+                "Test_Qtypes/what kind of": 30.81,
+                "Test_Qtypes/what type of": 29.37,
+                "Test_Atypes/other": 30.24,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 50.18,
+                "Test/topk_optimal": 52.98,
+                "Test/topk_not_optimal": 3.12,
+                "Test_Qtypes/none of the above": 54.39,
+                "Test_Qtypes/what brand": 13.37,
+                "Test_Qtypes/what animal is": 62.74,
+                "Test_Qtypes/what sport is": 72.69,
+                "Test_Qtypes/what time": 10.17,
+                "Test_Atypes/other": 39.72,
+                "Test_Atypes/yes_no": 75.94,
+                "Test_Atypes/number": 5.2
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 2.69,
+                "Test/topk_optimal": 2.65,
+                "Test/topk_not_optimal": 2.86,
+                "Test_Qtypes/why": 3.36,
+                "Test_Qtypes/why is the": 0.62,
+                "Test_Atypes/other": 2.7,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_subcategory": {
+        "q_recognition": [
+            {
+                "Test/overall": 28.41,
+                "Test/topk_optimal": 30.68,
+                "Test/topk_not_optimal": 4.77,
+                "Test_Qtypes/what are the": 28.61,
+                "Test_Qtypes/what is": 25.02,
+                "Test_Qtypes/what is the": 31.48,
+                "Test_Qtypes/which": 23.46,
+                "Test_Qtypes/what": 27.15,
+                "Test_Qtypes/what are": 36.3,
+                "Test_Qtypes/what is on the": 25.54,
+                "Test_Qtypes/what is this": 47.66,
+                "Test_Qtypes/what does the": 20.31,
+                "Test_Qtypes/what is in the": 30.74,
+                "Test_Qtypes/what is the name": 5.0,
+                "Test_Qtypes/who is": 24.62,
+                "Test_Atypes/other": 28.84,
+                "Test_Atypes/number": 12.59,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 27.61,
+                "Test/topk_optimal": 30.76,
+                "Test/topk_not_optimal": 7.32,
+                "Test_Qtypes/where is the": 22.24,
+                "Test_Qtypes/where are the": 20.06,
+                "Test_Qtypes/what room is": 88.18,
+                "Test_Atypes/other": 27.66,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 79.23,
+                "Test/topk_optimal": 79.59,
+                "Test/topk_not_optimal": 19.05,
+                "Test_Qtypes/is there a": 79.03,
+                "Test_Qtypes/is the": 76.06,
+                "Test_Qtypes/is that a": 78.85,
+                "Test_Qtypes/are these": 81.93,
+                "Test_Qtypes/is this": 80.23,
+                "Test_Qtypes/are the": 75.75,
+                "Test_Qtypes/are there": 81.27,
+                "Test_Qtypes/are there any": 80.44,
+                "Test_Qtypes/is this a": 85.36,
+                "Test_Qtypes/is it": 79.63,
+                "Test_Qtypes/are": 77.23,
+                "Test_Qtypes/was": 86.63,
+                "Test_Qtypes/is there": 77.62,
+                "Test_Qtypes/is": 80.03,
+                "Test_Qtypes/is this an": 85.77,
+                "Test_Atypes/yes_no": 81.69,
+                "Test_Atypes/other": 46.86,
+                "Test_Atypes/number": 12.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 77.2,
+                "Test/topk_optimal": 77.31,
+                "Test/topk_not_optimal": 54.0,
+                "Test_Qtypes/could": 78.66,
+                "Test_Qtypes/has": 76.99,
+                "Test_Qtypes/does this": 82.7,
+                "Test_Qtypes/does the": 73.46,
+                "Test_Qtypes/can you": 75.65,
+                "Test_Qtypes/do": 73.9,
+                "Test_Qtypes/do you": 82.62,
+                "Test_Atypes/yes_no": 78.39,
+                "Test_Atypes/other": 30.0,
+                "Test_Atypes/number": 75.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 46.86,
+                "Test/topk_optimal": 47.04,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 46.26,
+                "Test_Qtypes/how many people are in": 62.21,
+                "Test_Qtypes/how many people are": 53.21,
+                "Test_Qtypes/what number is": 12.5,
+                "Test_Atypes/number": 47.25,
+                "Test_Atypes/other": 1.36
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 66.0,
+                "Test/topk_optimal": 67.06,
+                "Test/topk_not_optimal": 11.54,
+                "Test_Qtypes/what is the man": 37.16,
+                "Test_Qtypes/are they": 83.94,
+                "Test_Qtypes/is the man": 80.21,
+                "Test_Qtypes/is the woman": 84.04,
+                "Test_Qtypes/is the person": 72.78,
+                "Test_Qtypes/is he": 83.09,
+                "Test_Qtypes/what is the woman": 38.02,
+                "Test_Qtypes/what is the person": 43.78,
+                "Test_Qtypes/is this person": 81.67,
+                "Test_Qtypes/are": 42.86,
+                "Test_Qtypes/is this": 78.26,
+                "Test_Qtypes/are the": 84.44,
+                "Test_Qtypes/are these": 51.11,
+                "Test_Atypes/other": 38.69,
+                "Test_Atypes/yes_no": 83.78,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 57.2,
+                "Test/topk_optimal": 57.64,
+                "Test/topk_not_optimal": 13.64,
+                "Test_Qtypes/what color is the": 57.64,
+                "Test_Qtypes/what color are the": 46.13,
+                "Test_Qtypes/what is the color of the": 63.18,
+                "Test_Qtypes/what color is": 73.03,
+                "Test_Qtypes/what color": 58.66,
+                "Test_Atypes/other": 57.2
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 28.16,
+                "Test/topk_optimal": 30.22,
+                "Test/topk_not_optimal": 4.53,
+                "Test_Qtypes/what kind of": 27.99,
+                "Test_Qtypes/what type of": 28.41,
+                "Test_Atypes/other": 28.19,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 49.75,
+                "Test/topk_optimal": 52.6,
+                "Test/topk_not_optimal": 1.95,
+                "Test_Qtypes/none of the above": 52.84,
+                "Test_Qtypes/what brand": 18.48,
+                "Test_Qtypes/what animal is": 58.67,
+                "Test_Qtypes/what sport is": 71.23,
+                "Test_Qtypes/what time": 18.58,
+                "Test_Atypes/other": 39.93,
+                "Test_Atypes/yes_no": 74.96,
+                "Test_Atypes/number": 1.33
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 1.78,
+                "Test/topk_optimal": 2.06,
+                "Test/topk_not_optimal": 0.71,
+                "Test_Qtypes/why": 2.15,
+                "Test_Qtypes/why is the": 0.62,
+                "Test_Atypes/other": 1.79,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+},{
+    "q_causal": {
+        "q_recognition": [
+            {
+                "Test/overall": 25.92,
+                "Test/topk_optimal": 27.86,
+                "Test/topk_not_optimal": 5.74,
+                "Test_Qtypes/what are the": 24.48,
+                "Test_Qtypes/what is": 19.24,
+                "Test_Qtypes/what is the": 30.13,
+                "Test_Qtypes/which": 23.9,
+                "Test_Qtypes/what": 26.95,
+                "Test_Qtypes/what are": 27.52,
+                "Test_Qtypes/what is on the": 16.49,
+                "Test_Qtypes/what is this": 43.65,
+                "Test_Qtypes/what does the": 19.82,
+                "Test_Qtypes/what is in the": 26.82,
+                "Test_Qtypes/what is the name": 7.83,
+                "Test_Qtypes/who is": 18.4,
+                "Test_Atypes/other": 26.24,
+                "Test_Atypes/number": 14.3,
+                "Test_Atypes/yes_no": 0.0
+            }
+        ],
+        "q_location": [
+            {
+                "Test/overall": 29.43,
+                "Test/topk_optimal": 33.02,
+                "Test/topk_not_optimal": 6.22,
+                "Test_Qtypes/where is the": 23.94,
+                "Test_Qtypes/where are the": 23.42,
+                "Test_Qtypes/what room is": 86.36,
+                "Test_Atypes/other": 29.48,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_judge": [
+            {
+                "Test/overall": 79.47,
+                "Test/topk_optimal": 79.78,
+                "Test/topk_not_optimal": 26.19,
+                "Test_Qtypes/is there a": 77.66,
+                "Test_Qtypes/is the": 77.04,
+                "Test_Qtypes/is that a": 80.31,
+                "Test_Qtypes/are these": 83.54,
+                "Test_Qtypes/is this": 81.27,
+                "Test_Qtypes/are the": 78.16,
+                "Test_Qtypes/are there": 78.37,
+                "Test_Qtypes/are there any": 76.15,
+                "Test_Qtypes/is this a": 84.31,
+                "Test_Qtypes/is it": 82.71,
+                "Test_Qtypes/are": 74.8,
+                "Test_Qtypes/was": 87.35,
+                "Test_Qtypes/is there": 75.66,
+                "Test_Qtypes/is": 79.27,
+                "Test_Qtypes/is this an": 87.22,
+                "Test_Atypes/yes_no": 81.59,
+                "Test_Atypes/other": 51.33,
+                "Test_Atypes/number": 38.0
+            }
+        ],
+        "q_commonsense": [
+            {
+                "Test/overall": 77.52,
+                "Test/topk_optimal": 77.63,
+                "Test/topk_not_optimal": 54.0,
+                "Test_Qtypes/could": 79.25,
+                "Test_Qtypes/has": 73.98,
+                "Test_Qtypes/does this": 85.16,
+                "Test_Qtypes/does the": 75.78,
+                "Test_Qtypes/can you": 71.96,
+                "Test_Qtypes/do": 72.01,
+                "Test_Qtypes/do you": 82.02,
+                "Test_Atypes/yes_no": 78.38,
+                "Test_Atypes/other": 43.33,
+                "Test_Atypes/number": 75.0
+            }
+        ],
+        "q_count": [
+            {
+                "Test/overall": 45.28,
+                "Test/topk_optimal": 45.46,
+                "Test/topk_not_optimal": 0.0,
+                "Test_Qtypes/how many": 44.45,
+                "Test_Qtypes/how many people are in": 59.47,
+                "Test_Qtypes/how many people are": 53.82,
+                "Test_Qtypes/what number is": 12.5,
+                "Test_Atypes/number": 45.65,
+                "Test_Atypes/other": 1.36
+            }
+        ],
+        "q_action": [
+            {
+                "Test/overall": 63.55,
+                "Test/topk_optimal": 64.6,
+                "Test/topk_not_optimal": 9.23,
+                "Test_Qtypes/what is the man": 34.43,
+                "Test_Qtypes/are they": 80.73,
+                "Test_Qtypes/is the man": 78.92,
+                "Test_Qtypes/is the woman": 83.64,
+                "Test_Qtypes/is the person": 76.33,
+                "Test_Qtypes/is he": 77.97,
+                "Test_Qtypes/what is the woman": 34.06,
+                "Test_Qtypes/what is the person": 34.18,
+                "Test_Qtypes/is this person": 81.28,
+                "Test_Qtypes/are": 57.14,
+                "Test_Qtypes/is this": 77.83,
+                "Test_Qtypes/are the": 84.44,
+                "Test_Qtypes/are these": 47.78,
+                "Test_Atypes/other": 35.62,
+                "Test_Atypes/yes_no": 81.71,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_color": [
+            {
+                "Test/overall": 52.78,
+                "Test/topk_optimal": 53.26,
+                "Test/topk_not_optimal": 5.45,
+                "Test_Qtypes/what color is the": 53.54,
+                "Test_Qtypes/what color are the": 43.99,
+                "Test_Qtypes/what is the color of the": 61.41,
+                "Test_Qtypes/what color is": 63.1,
+                "Test_Qtypes/what color": 49.8,
+                "Test_Atypes/other": 52.78
+            }
+        ],
+        "q_type": [
+            {
+                "Test/overall": 27.34,
+                "Test/topk_optimal": 29.39,
+                "Test/topk_not_optimal": 3.84,
+                "Test_Qtypes/what kind of": 27.46,
+                "Test_Qtypes/what type of": 27.17,
+                "Test_Atypes/other": 27.37,
+                "Test_Atypes/number": 0.0
+            }
+        ],
+        "q_subcategory": [
+            {
+                "Test/overall": 49.87,
+                "Test/topk_optimal": 52.68,
+                "Test/topk_not_optimal": 2.73,
+                "Test_Qtypes/none of the above": 53.05,
+                "Test_Qtypes/what brand": 22.5,
+                "Test_Qtypes/what animal is": 66.11,
+                "Test_Qtypes/what sport is": 61.31,
+                "Test_Qtypes/what time": 19.0,
+                "Test_Atypes/other": 38.92,
+                "Test_Atypes/yes_no": 76.65,
+                "Test_Atypes/number": 4.0
+            }
+        ],
+        "q_causal": [
+            {
+                "Test/overall": 14.21,
+                "Test/topk_optimal": 17.1,
+                "Test/topk_not_optimal": 3.57,
+                "Test_Qtypes/why": 15.03,
+                "Test_Qtypes/why is the": 11.67,
+                "Test_Atypes/other": 14.29,
+                "Test_Atypes/number": 0.0
+            }
+        ]
+    }
+}
+]
