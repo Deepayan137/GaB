@@ -1,4 +1,5 @@
 import os
+from torch.utils.data import Subset
 from torch.utils.data import DataLoader, Dataset, Sampler
 from pathlib import Path
 from collections import defaultdict
@@ -65,27 +66,39 @@ class VQAFineTuneDataset(Dataset):
         data_info_dicts_cate = []
         self.cate_set = set()
         for source in self.sources:
-            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q/{source}_'+f'{task}.json')
+            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q_V2/{source}_'+f'{task}.json')
             with open(data_info_path) as f:
                 _data_info_dicts = json.load(f)
                 _data_info_dicts.extend(Examplar_set)
                 for _d in _data_info_dicts:
                     img_id = _d['img_id']
-                    try:
-                        if ImgId_cate_map[img_id] in cates:
-                            self.cate_set.add(ImgId_cate_map[img_id])
-                            data_info_dicts_cate.append(_d)
-                            if 'vg_qa_full' == source:
-                                self.img_ids_to_source[_d['img_id']] = 'vg'
-                            elif 'train2014' in _d['img_id']:
-                                self.img_ids_to_source[_d['img_id']] = 'train2014'
-                            elif 'val2014' in _d['img_id']:
-                                self.img_ids_to_source[_d['img_id']] = 'val2014'
-                            else:
-                                self.img_ids_to_source[_d['img_id']] = source
-                                _d['source'] = source
-                    except:
-                        continue
+                    if args.use_class_hierarchy:
+                        try:
+                            if ImgId_cate_map[img_id] in cates:
+                                self.cate_set.add(ImgId_cate_map[img_id])
+                                data_info_dicts_cate.append(_d)
+                                if 'vg_qa_full' == source:
+                                    self.img_ids_to_source[_d['img_id']] = 'vg'
+                                elif 'train2014' in _d['img_id']:
+                                    self.img_ids_to_source[_d['img_id']] = 'train2014'
+                                elif 'val2014' in _d['img_id']:
+                                    self.img_ids_to_source[_d['img_id']] = 'val2014'
+                                else:
+                                    self.img_ids_to_source[_d['img_id']] = source
+                                    _d['source'] = source
+                        except:
+                            continue
+                    else:
+                        data_info_dicts_cate.append(_d)
+                        if 'vg_qa_full' == source:
+                            self.img_ids_to_source[_d['img_id']] = 'vg'
+                        elif 'train2014' in _d['img_id']:
+                            self.img_ids_to_source[_d['img_id']] = 'train2014'
+                        elif 'val2014' in _d['img_id']:
+                            self.img_ids_to_source[_d['img_id']] = 'val2014'
+                        else:
+                            self.img_ids_to_source[_d['img_id']] = source
+                            _d['source'] = source
 
         data = data_info_dicts_cate
 
@@ -102,15 +115,17 @@ class VQAFineTuneDataset(Dataset):
         if self.verbose:
             print("# all sentences:", len(self.data), 'with Examplers')
             if self.sources[0] == 'karpathy_train':
-                print("    cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
-
+                if args.use_class_hierarchy:
+                    print("cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
+                else:
+                    print("No class hierarchy")
         self.n_boxes = args.n_boxes
         # data_dir = "../datasets/COCO"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
             'nominival': os.path.join(data_dir, f'val2014'),
-            'test': os.path.join(f'test2014'),
+            'test': os.path.join(data_dir, f'test2015'),
 
             'vg': dataset_dir.joinpath('VG/features').joinpath('vg_gqa_obj36.h5'),
 
@@ -129,13 +144,12 @@ class VQAFineTuneDataset(Dataset):
         out_dict['args'] = self.args
 
         datum = self.data[idx]
-
         ###### Image ######
         if self.args.use_vision:
             img_id = datum['img_id']
             out_dict['img_id'] = img_id
-
-            out_dict['img_cate'] = ImgId_cate_map[img_id]
+            if self.args.use_class_hierarchy:
+                out_dict['img_cate'] = ImgId_cate_map[img_id]
 
             source = self.img_ids_to_source[img_id] # source: val2014
         
@@ -191,7 +205,6 @@ class VQAFineTuneDataset(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
@@ -221,13 +234,13 @@ class VQAFineTuneDataset(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-                answer = f'{answer}'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
-
-                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
+                eos_token_id = [2]
+                target_ids = self.processor.tokenizer.encode(answer, 
+                    max_length=10, truncation=True)
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
 
@@ -328,11 +341,11 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -367,22 +380,35 @@ class VQAFineTuneDataset_memory(Dataset):
         data_info_dicts_cate = []
 
         _data_info_dicts = Examplar_set # ---- from the memory
+        
         for _d in _data_info_dicts:
             img_id = _d['img_id']
-            try:
-                if ImgId_cate_map[img_id] in cates:
-                    data_info_dicts_cate.append(_d)
-                    if 'vg_qa_full' == self.sources[0]:
-                        self.img_ids_to_source[_d['img_id']] = 'vg'
-                    elif 'train2014' in _d['img_id']:
-                        self.img_ids_to_source[_d['img_id']] = 'train2014'
-                    elif 'val2014' in _d['img_id']:
-                        self.img_ids_to_source[_d['img_id']] = 'val2014'
-                    else:
-                        self.img_ids_to_source[_d['img_id']] = self.sources[0]
-                        _d['source'] = self.sources[0]
-            except:
-                continue
+            if args.use_class_hierarchy:
+                try:
+                    if ImgId_cate_map[img_id] in cates:
+                        data_info_dicts_cate.append(_d)
+                        if 'vg_qa_full' == self.sources[0]:
+                            self.img_ids_to_source[_d['img_id']] = 'vg'
+                        elif 'train2014' in _d['img_id']:
+                            self.img_ids_to_source[_d['img_id']] = 'train2014'
+                        elif 'val2014' in _d['img_id']:
+                            self.img_ids_to_source[_d['img_id']] = 'val2014'
+                        else:
+                            self.img_ids_to_source[_d['img_id']] = self.sources[0]
+                            _d['source'] = self.sources[0]
+                except:
+                    continue
+            else:
+                data_info_dicts_cate.append(_d)
+                if 'vg_qa_full' == self.sources[0]:
+                    self.img_ids_to_source[_d['img_id']] = 'vg'
+                elif 'train2014' in _d['img_id']:
+                    self.img_ids_to_source[_d['img_id']] = 'train2014'
+                elif 'val2014' in _d['img_id']:
+                    self.img_ids_to_source[_d['img_id']] = 'val2014'
+                else:
+                    self.img_ids_to_source[_d['img_id']] = self.sources[0]
+                    _d['source'] = self.sources[0]
 
 
         data = data_info_dicts_cate
@@ -407,7 +433,7 @@ class VQAFineTuneDataset_memory(Dataset):
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
             'nominival': os.path.join(data_dir, f'val2014'),
-            'test': os.path.join(f'test2014'),
+            'test': os.path.join(data_dir, f'test2015'),
 
             'vg': dataset_dir.joinpath('VG/features').joinpath('vg_gqa_obj36.h5'),
 
@@ -431,8 +457,8 @@ class VQAFineTuneDataset_memory(Dataset):
         if self.args.use_vision:
             img_id = datum['img_id'] # img_id: COCO_val2014_.....
             out_dict['img_id'] = img_id
-
-            out_dict['img_cate'] = ImgId_cate_map[img_id]
+            if self.args.use_class_hierarchy:
+                out_dict['img_cate'] = ImgId_cate_map[img_id]
 
             source = self.img_ids_to_source[img_id] # source: val2014
         
@@ -489,7 +515,6 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = self.answer_normalizer.normalize_answer(answer)
 
                 score = int(len(answers) > 0)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
@@ -518,13 +543,13 @@ class VQAFineTuneDataset_memory(Dataset):
                     answer = answers[choice]
                     score = scores[choice]
                     assert len(answer) > 0, (sent, label, choice, answer)
-                answer = f'{answer}\n'
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
-
-                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
+                # eos_token_id = self.processor.tokenizer.eos_token_id
+                target_ids = self.processor.tokenizer.encode(answer, 
+                    max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
@@ -623,11 +648,11 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -639,10 +664,9 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
     verbose = (gpu == 0)
 
     # _dset = VQADataset(split, verbose, task) # 这里不用改动？
-
-    cate_loader = {}
-
-    for idx, CateGroup in enumerate(Category_splits):
+    def cat_loader(CateGroup):
+        
+        cates = Category_splits[CateGroup]
         dataset = VQAFineTuneDataset_memory(
             coco_Ours,
             Examplar_set,
@@ -679,9 +703,14 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
             loader.evaluator = VQAEvaluator(_dset)
 
         loader.task = 'vqa'
+        return loader
 
-        cate_loader[CateGroup] = loader
-
+    cate_loader = {}
+    if args.use_class_hierarchy:
+        for idx, CateGroup in enumerate(Category_splits):
+            cate_loader[CateGroup] = cat_loader(CateGroup)
+    else:
+        cate_loader['G1'] = cat_loader('G1')
     return cate_loader
 
 
@@ -760,10 +789,9 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
     verbose = (gpu == 0)
 
     cate_loader = {}
-    total_num = 0
-    
-    for idx, CateGroup in enumerate(Category_splits):
+    def cat_loader(CateGroup):
         print(CateGroup, end=',')
+        cates = Category_splits[CateGroup]
         dataset = VQAFineTuneDataset(
             coco_Ours,
             Examplar_set,
@@ -789,7 +817,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             sampler = None
         if mode == 'train':
             loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=(sampler is None),
+                dataset, batch_size=batch_size, shuffle=True,
                 num_workers=workers, pin_memory=True, sampler=sampler,
                 collate_fn=dataset.collate_fn)
         else:
@@ -801,14 +829,18 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
                 shuffle=None if (sampler is not None) else False,
                 collate_fn=dataset.collate_fn,
                 drop_last=False)
-
         if verbose:
             loader.evaluator = VQAEvaluator(_dset)
 
         loader.task = 'vqa'
-
-        cate_loader[CateGroup] = loader
-
+        return loader, dataset_num
+    total_num = 0
+    if args.use_class_hierarchy:
+        for idx, CateGroup in enumerate(Category_splits):
+            cate_loader[CateGroup], dataset_num = cat_loader(CateGroup)
+            total_num+=dataset_num
+    else:
+        cate_loader['G1'], total_num = cat_loader('G1')
     return cate_loader, total_num
 
 
@@ -1143,7 +1175,7 @@ if __name__ == "__main__":
             print('======================== Now is task "', task, '" ========================')
             if task_idx != latest_task_idx + 1:
                 each_memory = int(M)
-                data_info_path = ('../datasets/vqa/Partition_Q/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
+                data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
                 with open(data_info_path) as f:
                     data_info_dicts = json.load(f)
                 random.shuffle(data_info_dicts)  # shuffle

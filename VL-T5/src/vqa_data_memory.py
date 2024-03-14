@@ -9,6 +9,7 @@ import pickle
 import math
 from tqdm import tqdm
 import torch
+from torch.utils.data import Subset
 import numpy as np
 from copy import deepcopy
 import re
@@ -367,11 +368,11 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -708,11 +709,11 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1)
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1)
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 

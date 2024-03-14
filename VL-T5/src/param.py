@@ -57,7 +57,7 @@ def get_optimizer(optim, verbose=False):
 
 def parse_args(parse=True, **optional_kwargs):
     parser = argparse.ArgumentParser()
-
+    parser.add_argument('--exp_name', type=str, default='test')
     parser.add_argument('--ifseed', action='store_true')
     parser.add_argument('--seed', type=int, default=66666, help='random seed')
     parser.add_argument('--data_dir', type=str, default='/home/deepayan.das/projects/VQACL/datasets/COCO')
@@ -195,8 +195,11 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--proto_alpha", type=float, default=0.5)
     parser.add_argument("--proto_beta", type=float, default=0.3)
     parser.add_argument("--eval_blip", default=False, type=str2bool)
-
-
+    parser.add_argument('--full', default=True, type=str2bool)
+    parser.add_argument("--train_from_scratch", default=False, type=str2bool)
+    parser.add_argument("--use_class_hierarchy", default=True, type=str2bool)
+    parser.add_argument("--show_train_progress", default=False, type=str2bool)
+    parser.add_argument("--log_all_runs", default=False, type=str2bool)
 
     # Parse the arguments.
     if parse:
