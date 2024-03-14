@@ -738,7 +738,8 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
             verbose=verbose,
             args=args,
             mode=mode,
-            cates=Category_splits[CateGroup],)
+            cates=Category_splits[CateGroup],
+            data_dir=args.data_dir)
 
         if distributed:
             sampler = DistributedSampler(dataset)
@@ -789,7 +790,8 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
         args=args,
         mode=mode,
         task=task,
-        cates=[i for i in range(80)],) # all categories
+        cates=[i for i in range(80)],
+        data_dir=args.data_dir) # all categories
 
     if distributed:
         sampler = DistributedSampler(dataset)
@@ -827,7 +829,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
 
     cate_loader = {}
     total_num = 0
-
+    print(f'**************DATA DIR {args.data_dir}')
     for idx, CateGroup in enumerate(Category_splits):
         print(CateGroup, end=',')
         dataset = VQAFineTuneDataset(
@@ -841,7 +843,8 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             args=args,
             mode=mode,
             task=task,
-            cates=Category_splits[CateGroup],)
+            cates=Category_splits[CateGroup], 
+            data_dir = args.data_dir)
 
         total_num += len(dataset)
         if distributed:

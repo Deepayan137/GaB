@@ -36,7 +36,7 @@ vqa_dir = dataset_dir.joinpath('vqa')
 
 
 class VQAFineTuneDataset(Dataset):
-    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', task='q_what', cates=[0,1,2]):
+    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', task='q_what', cates=[0,1,2], data_dir='/home/deepayan.das/projects/VQACL/datasets/COCO'):
         super().__init__()
 
         self.raw_dataset = raw_dataset
@@ -105,7 +105,7 @@ class VQAFineTuneDataset(Dataset):
                 print("    cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
 
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        # data_dir = "../datasets/COCO"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
@@ -144,7 +144,8 @@ class VQAFineTuneDataset(Dataset):
             if os.path.exists(f):
                 image = Image.open(f).convert("RGB")
             else:
-                raise "image path does not exists"
+                print(f)
+                raise Exception("image path does not exists")
             ###### Text #####
             # caption = datum['caption']
             if 'sent' in datum:
@@ -336,7 +337,7 @@ class VQAFineTuneDataset(Dataset):
         return batch_entry
 
 class VQAFineTuneDataset_memory(Dataset):
-    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', cates=[0,1,2]):
+    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', cates=[0,1,2], data_dir='/home/deepayan.das/projects/VQACL/datasets/COCO'):
         super().__init__()
 
         self.raw_dataset = raw_dataset
@@ -401,7 +402,7 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        data_dir = "../datasets/COCO/"
+        # data_dir = "../datasets/COCO/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
@@ -652,7 +653,7 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
             verbose=verbose,
             args=args,
             mode=mode,
-            cates=Category_splits[CateGroup],)
+            cates=Category_splits[CateGroup], data_dir=args.data_dir)
 
         if distributed:
             sampler = DistributedSampler(dataset)
@@ -703,7 +704,7 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
         args=args,
         mode=mode,
         task=task,
-        cates=[i for i in range(80)],) # all categories
+        cates=[i for i in range(80)], data_dir=args.data_dir) # all categories
 
     if distributed:
         sampler = DistributedSampler(dataset)
@@ -774,7 +775,8 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             args=args,
             mode=mode,
             task=task,
-            cates=Category_splits[CateGroup],)
+            cates=Category_splits[CateGroup],
+            data_dir=args.data_dir)
         # blanks_pre=[dataset[i]['answer'] for i in range(len(dataset)) if dataset[i]['answer']=='\n']
         # import pdb;pdb.set_trace()
         # print("Filtering Dataset")
@@ -1120,7 +1122,8 @@ if __name__ == "__main__":
                     distributed=False, gpu=True,
                     workers=4,
                     topk=-1,
-                    task='q_recognition',
+                    task='q_recognition', 
+                    data_dir=args.data_dir
                 )
 
         train_loader_cate = train_loader['G1']

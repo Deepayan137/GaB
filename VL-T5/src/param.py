@@ -60,6 +60,7 @@ def parse_args(parse=True, **optional_kwargs):
 
     parser.add_argument('--ifseed', action='store_true')
     parser.add_argument('--seed', type=int, default=66666, help='random seed')
+    parser.add_argument('--data_dir', type=str, default='/home/deepayan.das/projects/VQACL/datasets/COCO')
 
     # Data Splits
     parser.add_argument("--train", default='train')
