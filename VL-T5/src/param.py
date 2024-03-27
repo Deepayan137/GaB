@@ -73,6 +73,8 @@ def parse_args(parse=True, **optional_kwargs):
     # Quick experiments
     parser.add_argument('--train_topk', type=int, default=-1)
     parser.add_argument('--valid_topk', type=int, default=-1)
+    parser.add_argument('--tasks_topk', type=int, default=-1)
+
 
     # Checkpoint
     parser.add_argument('--output', type=str, default='snap/test')
@@ -201,6 +203,12 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--show_train_progress", default=False, type=str2bool)
     parser.add_argument("--log_all_runs", default=False, type=str2bool)
 
+    # baselines
+    parser.add_argument("--lambda_ewc", type=float, default=0.0)
+    parser.add_argument("--lambda_uni_ewc", type=float, default=0.0)
+    parser.add_argument("--lambda_mas", type=float, default=0.0)
+    parser.add_argument("--lambda_l2p", type=float, default=0.0)
+    
     # Parse the arguments.
     if parse:
         args = parser.parse_args()

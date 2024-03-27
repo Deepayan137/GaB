@@ -66,7 +66,7 @@ class VQAFineTuneDataset(Dataset):
         data_info_dicts_cate = []
         self.cate_set = set()
         for source in self.sources:
-            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q_V2/{source}_'+f'{task}.json')
+            data_info_path = dataset_dir.joinpath(f'vqa/Partition_Q/{source}_'+f'{task}.json')
             with open(data_info_path) as f:
                 _data_info_dicts = json.load(f)
                 _data_info_dicts.extend(Examplar_set)
@@ -810,7 +810,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
         # print("Filtering Dataset")
         # dataset = FilteredVQAFineTuneDataset(dataset)
         # blanks_post=[dataset[i]['answer'] for i in range(len(dataset)) if dataset[i]['answer']=='\n']
-        total_num += len(dataset)
+        dataset_num = len(dataset)
         if distributed:
             sampler = DistributedSampler(dataset)
         else:

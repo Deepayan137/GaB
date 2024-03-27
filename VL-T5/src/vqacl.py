@@ -64,7 +64,11 @@ class Trainer(TrainerBase):
     def __init__(self, args, coco_Ours, train_loader=None, val_loader=None, test_loader=None, train=True):
         self.result_matrix = {}
         self.task_list = []
-        for task in coco_Ours:
+        tasks_set = coco_Ours
+        if args.tasks_topk != -1:
+            tasks_set = tasks_set[:args.tasks_topk]
+        
+        for task in tasks_set:
             self.result_matrix[task] = {}
             self.task_list.append(task)
 
@@ -110,6 +114,11 @@ class Trainer(TrainerBase):
 
         self.model = self.create_model(model_class, config, **model_kwargs)
 
+        self.regularizer = None 
+        if isinstance(self.model, tuple):
+            self.regularizer = self.model[1]
+            self.model = self.model[0]
+
         if 't5' in self.args.tokenizer:
             self.model.resize_token_embeddings(self.tokenizer.vocab_size)
         elif 'bart' in self.args.tokenizer:
@@ -124,6 +133,8 @@ class Trainer(TrainerBase):
             from time import time
             start = time()
         self.model = self.model.to(args.gpu)
+        if self.regularizer is not None:
+            self.regularizer = self.regularizer.to(args.gpu)
         self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
         if args.multiGPU:
             if args.distributed:
@@ -362,7 +373,6 @@ class Trainer(TrainerBase):
                         }
 
                         quesid2ans = {}
-
                         if len(self.memory_loader_cate.dataset) > 0:
                             now_loader = zip(self.train_loader_cate, cycle(self.memory_loader_cate))
                             print('Use memory loader')
@@ -375,6 +385,7 @@ class Trainer(TrainerBase):
                             else:
                                 batch = now_batch
                                 mem_batch = None
+
                             results, lr = self.train_step(batch, epoch_results, task_idx, each_memory)
                             if mem_batch:
                                 results_mem, lr = self.train_step(mem_batch, epoch_results, task_idx, each_memory)
@@ -411,8 +422,17 @@ class Trainer(TrainerBase):
 
                         if self.args.distributed:
                             dist.barrier()
-                
-                
+                    # end of task: compute relevance of weights
+                    if self.regularizer is not None:
+                        self.regularizer.after_training_exp(model=self.model,
+                                                            optimizer=self.optim, 
+                                                            dloader=self.train_loader_cate,
+                                                            current_task_id=task_idx,
+                                                            proto_alpha=self.args.proto_alpha,
+                                                            proto_beta= self.args.proto_beta,
+                                                            mem_num_Q = 0,
+                                                            total_num_Q=self.task_total_num
+                                                            ) 
                 self.save(task + "_LAST")
                 prev_task_id = task_idx - 1
                 if prev_task_id >= 0:
@@ -436,19 +456,32 @@ class Trainer(TrainerBase):
 
     def train_step(self, batch, epoch_results, task_idx, each_memory):
         self.optim.zero_grad(set_to_none=True)
+        embeddings=None
+        if self.args.lambda_l2p:
+            # prompt the embeddings
+            out = self.regularizer.before_backward(self.model, batch['pixel_values'])
+            prompt = out['prompt']
+            cl_reg = out['loss']
+            embeddings=prompt
         if self.args.fp16 and _use_native_amp:
             with autocast():
                 if self.args.distributed:
-                    results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
+                    results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
                 else:
-                    results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
+                    results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
         else:  # this
             if self.args.distributed:
-                results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
+                results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
             else:
-                results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
+                results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
 
         loss = results['loss']
+        
+        # add the regularization term accounting for weight relevance
+        if self.regularizer is not None:
+            if self.args.lambda_l2p == 0:
+                cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
+            loss += cl_reg
         lambda_Q = self.args.lambda_Q
         lambda_V = self.args.lambda_V
         lambda_Q_new = self.args.lambda_Q_new
@@ -592,7 +625,7 @@ class Trainer(TrainerBase):
         flag = 1
         mega_log_dict = {}
         mega_log_dict[task] = {}
-        for test_task in self.coco_Ours:
+        for test_task in self.task_list:
             mega_log_dict[task][test_task] = []
             # if self.args.now_train:
             #     if self.task_iftrain[test_task] == 0:

@@ -14,6 +14,9 @@ import torch.nn as nn
 import logging
 import shutil
 from pprint import pprint
+from baselines.ewc import EWC
+from baselines.mas import MAS
+from baselines.l2p import Learning2Prompt
 
 from utils import load_state_dict, LossMeter, set_global_logging_level
 import wandb
@@ -108,6 +111,26 @@ class TrainerBase(object):
             config=config,
             **kwargs
         )
+        if self.args.lambda_ewc > 0:
+            print(f'Using EWC regularization with lambda {self.args.lambda_ewc}')
+            ewc_module = EWC(ewc_lambda=1, decay_factor=0.99, uniform_importance=False)
+            return model, ewc_module
+        
+        if self.args.lambda_uni_ewc > 0:
+            print(f'Using EWC uniform regularization with lambda {self.args.lambda_uni_ewc}')
+            ewc_module = EWC(ewc_lambda=1, decay_factor=0.99, uniform_importance=True)
+            return model, ewc_module
+        
+        if self.args.lambda_mas > 0:
+            print(f'Using MAS regularization with lambda {self.args.lambda_mas}')
+            mas_module = MAS(lambda_reg=1, alpha=0.99)
+            return model, mas_module
+        
+        if self.args.lambda_l2p > 0:
+            print(f'Using L2P regularization with lambda {self.args.lambda_mas}')
+            l2p_module = Learning2Prompt(embed_dim=1408, prompt_key=True, pool_size=15, top_k=5, prompt_pool=True)
+            return model, l2p_module
+
         return model
 
     def create_tokenizer(self, **kwargs):
