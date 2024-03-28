@@ -4,12 +4,12 @@
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=1       # CPU cores per task
-#SBATCH -t 03:00:00
+#SBATCH -t 06:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=20G 
-#SBATCH -o logs/test_blip_naive.out
+#SBATCH -o logs/test_blip_base.out
 
-name='naiveblip'
+name='blip_base'
 
 output=snap/$name
 

@@ -2,115 +2,49 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.init as init
+
 import numpy as np
 
+from transformers import AutoProcessor
+from src.blip2.modeling_blip import NaiveBlip2VQACL
+from src.blip2.modeling_blip_vqacl import Blip2VQACL
 
-from src.modeling_blip import Blip2VQACL
-from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
-
-class NaiveBLIP2(Blip2ForConditionalGeneration):
-    def __init__(self, config, num_answers=None, label2ans=None):
+class BLIP2Prototype(Blip2VQACL):
+    def __init__(self, config, num_answers=None, label2ans=None, ft_layers="query_tokens"):
         super().__init__(config)
-        from transformers import AutoProcessor
         self.num_answers = num_answers
         self.label2ans = label2ans
         self.bce_loss = nn.BCEWithLogitsLoss()
         self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
-        
+        # self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         for name, param in self.vision_model.named_parameters():
             param.requires_grad = False
-        
+        print("Freeze vision encoder")
         self.vision_model = self.vision_model.eval()
-        # print("Freezing qformer")
-        # for name, param in self.qformer.named_parameters():
-        #     param.requires_grad = False
-        
-        print("Freezing qformer all but last layer")
+
         num_layers = len(self.qformer.encoder.layer)
+        # Freeze all parameters of the query transformer by default
+        for param in self.qformer.parameters():
+            param.requires_grad = False
 
-        # for i, layer in enumerate(self.qformer.encoder.layer):
-        #     # Freeze all layers except the last one
-        #     if i < num_layers - 1:
-        #         for param in layer.parameters():
-        #             param.requires_grad = False
-
-        self.query_tokens.requires_grad = True
-        print("freeze vision encoder")
-        
+        print("Freeze Language model")
         for name, param in self.language_model.named_parameters():
             param.requires_grad = False
-        # self.eos_token_id = self.processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
-
-    @torch.no_grad()
-    def test_step(self, batch, task, **kwargs):
-        self.eval()
-        device = next(self.parameters()).device
-        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        input_ids = batch['input_ids'].to(device) # bs, 20
-        lm_labels = batch["target_ids"].to(device) #[bs, 5]
-        
-        attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
-        # cate_labels = batch['cate_labels'].to(device)
-        # ques_labels = batch['ques_labels'].to(device)
-        max_new_tokens = 2
-        if task in ['q_recognition', 'q_type']:
-            max_new_tokens = 3
-        output = self.generate(input_ids=input_ids,
-            pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            repetition_penalty=1.2)
-        result = {}
-        result['token_ids'] = output
-        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
-        return result
 
     def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False):
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
         input_ids = batch['input_ids'].to(device) # bs, 20
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
-        attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
-        output = self(input_ids=input_ids,
-            pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            labels=lm_labels
-            )
-        assert 'loss' in output
-        B, L = lm_labels.size()
-        loss = output['loss'] # 400 (bs*5)
-        result = {
-            'loss': loss
-        }
-        result['logits'] = output['logits']
-        result['BL'] = (B, L)
-        if 'loss_memory' in output:
-            result['loss_memory'] = output['loss_memory']  #(output['loss_memory_Q'], output['loss_memory_V'])
-        if 'loss_memory_new' in output:
-            result['loss_memory_new'] = output['loss_memory_new']
-        return result
-
-class BLIP2VQA(Blip2VQACL):
-    def __init__(self, config, num_answers=None, label2ans=None):
-        super().__init__(config)
-
-        self.num_answers = num_answers
-        self.label2ans = label2ans
-        self.bce_loss = nn.BCEWithLogitsLoss()
-
-    def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False):
-
-        device = next(self.parameters()).device
-        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        input_ids = batch['input_ids'].to(device) # bs, 20
-        lm_labels = batch["target_ids"].to(device) #[bs, 5]
-
         cate_labels = batch['cate_labels'].to(device)
         ques_labels = batch['ques_labels'].to(device)
-        attention_mask = (input_ids != 1).long().to(device)
+        # attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+
         output = self(
             input_ids=input_ids,
             pixel_values=pixel_values,
+            attention_mask=None,
             labels=lm_labels,
             cate_labels=cate_labels,
             ques_labels=ques_labels,
@@ -123,22 +57,143 @@ class BLIP2VQA(Blip2VQACL):
             proto_beta=proto_beta,
             return_dict=True
         )
-        assert 'loss' in output
-        lm_mask = (lm_labels != -100).float()
-        lm_mask = lm_mask[:, :-1]  
-        B, L = lm_labels.size()
-        loss = output['loss'] # 400 (bs*5)
-        loss = loss.view(B, L-1) * lm_mask
 
-        loss = loss.sum(dim=1) / lm_mask.sum(dim=1).clamp(min=1)  # B
-        loss = loss * batch['scores'].to(device=device) # batch['score']: bs
-        loss = loss.mean()
+        assert 'loss' in output
+        lm_mask = (lm_labels != 1).float()
+        B, L = lm_labels.size()
+        loss = output['loss'].mean() # 400 (bs*5)
         result = {
             'loss': loss
         }
         result['logits'] = output['logits']
         result['BL'] = (B, L)
-        # result['encoder_attention_mask'] = output['encoder_attention_mask']
+        if 'loss_memory' in output:
+            result['loss_memory'] = output['loss_memory']  #(output['loss_memory_Q'], output['loss_memory_V'])
+        if 'loss_memory_new' in output:
+            result['loss_memory_new'] = output['loss_memory_new']
+        return result
+        
+    @torch.no_grad()
+    def test_step(self, batch, task, **kwargs):
+        self.eval()
+        device = next(self.parameters()).device
+        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+        input_ids = batch['input_ids'].to(device) # bs, 20
+        lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        
+        # attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+        cate_labels = batch['cate_labels'].to(device)
+        ques_labels = batch['ques_labels'].to(device)
+        max_new_tokens = 2
+        output = self.generate(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            max_new_tokens=max_new_tokens,
+            repetition_penalty=1.2)
+        result = {}
+        result['token_ids'] = output
+        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
+        return result
+
+
+
+
+class NaiveBLIP2(NaiveBlip2VQACL):
+    def __init__(self, config, num_answers=None, label2ans=None, ft_layers='query_tokens'):
+        super().__init__(config)
+        from transformers import AutoProcessor
+        self.num_answers = num_answers
+        self.label2ans = label2ans
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+        for name, param in self.vision_model.named_parameters():
+            param.requires_grad = False
+        print("Freeze vision encoder")
+        self.vision_model = self.vision_model.eval()
+        
+        num_layers = len(self.qformer.encoder.layer)
+        # Freeze all parameters of the query transformer by default
+        for param in self.qformer.parameters():
+            param.requires_grad = False
+
+        if ft_layers == 'full':
+            print("Unfreeze all parameters of the query transformer")
+            for param in self.qformer.parameters():
+                param.requires_grad = True
+
+        elif ft_layers == 'query_tokens':
+            print("Unfreeze only the query tokens")
+            self.query_tokens.requires_grad = True
+            self.language_projection.requires_grad = True
+        
+        elif ft_layers == 'query_tokens_random':
+            print("Unfreeze only the query tokens")
+            self.query_tokens.requires_grad = True
+            in_features, out_features = self.language_projection.in_features,\
+            self.language_projection.out_features
+            self.language_projection = nn.Linear(in_features, out_features)
+            self.language_projection.weight.requires_grad = True
+            self.language_projection.bias.requires_grad = True
+        elif ft_layers == 'query_tokens_task':
+            num_heads = 10
+            self.query_tokens.requires_grad = True
+            in_features, out_features = self.language_projection.in_features,\
+            self.language_projection.out_features
+            self.projection_heads = nn.ModuleList([
+                    nn.Linear(in_features, out_features) for _ in range(num_heads)
+                ])
+            for head in self.projection_heads:
+                init.xavier_uniform_(head.weight)  # Xavier initialization
+                init.zeros_(head.bias)
+
+            self.meta_selector = nn.Linear(out_features, num_heads)
+            init.xavier_uniform_(self.meta_selector.weight)  # Xavier initialization
+            init.zeros_(self.meta_selector.bias)
+
+        print("Freeze Language model")
+        for name, param in self.language_model.named_parameters():
+            param.requires_grad = False
+        
+    @torch.no_grad()
+    def test_step(self, batch, task, **kwargs):
+        self.eval()
+        device = next(self.parameters()).device
+        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+        input_ids = batch['input_ids'].to(device) # bs, 20
+        lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        
+        attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+        # cate_labels = batch['cate_labels'].to(device)
+        # ques_labels = batch['ques_labels'].to(device)
+        max_new_tokens = 2
+        output = self.generate(input_ids=input_ids,pixel_values=pixel_values,attention_mask=attention_mask,
+            max_new_tokens=max_new_tokens,repetition_penalty=1.2)
+        result = {}
+        result['token_ids'] = output
+        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
+        import pdb;pdb.set_trace()
+        return result
+
+    def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False):
+        device = next(self.parameters()).device
+        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+        input_ids = batch['input_ids'].to(device) # bs, 20
+        lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+        
+        output = self(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            attention_mask=attention_mask,
+            labels=lm_labels)
+        assert 'loss' in output
+        B, L = lm_labels.size()
+        loss = output['loss'] # 400 (bs*5)
+        result = {
+            'loss': loss
+        }
+        result['logits'] = output['logits']
+        result['BL'] = (B, L)
         if 'loss_memory' in output:
             result['loss_memory'] = output['loss_memory']  #(output['loss_memory_Q'], output['loss_memory_V'])
         if 'loss_memory_new' in output:
@@ -146,40 +201,14 @@ class BLIP2VQA(Blip2VQACL):
         return result
 
 
-    @torch.no_grad()
-    def test_step(self, batch, **kwargs):
-        self.eval()
-        device = next(self.parameters()).device
-        pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        input_ids = batch['input_ids'].to(device) # bs, 20
-        lm_labels = batch["target_ids"].to(device) #[bs, 5]
-        attention_mask = (input_ids != 1).long().to(device)
-
-        cate_labels = batch['cate_labels'].to(device)
-        ques_labels = batch['ques_labels'].to(device)
-        output = self.generate(
-            input_ids=input_ids,
-            pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            max_new_tokens=10,
-
-            **kwargs,
-        )
-        # import pdb;pdb.set_trace()
-        result = {}
-        result['token_ids'] = output
-        # result['pred_ans'] = generated_sents
-
-        return result
-
 if __name__ == "__main__":
     import torch
     import torch.nn as nn
-    from transformers import Blip2Config, AutoProcessor
+    from transformers import T5Config, BartConfig, Blip2Config
     from torch.utils.data import DataLoader, Dataset
     from src.vqa_data_blip import VQADataset, VQAFineTuneDataset, FilteredVQAFineTuneDataset
     from src.param import parse_args
-    from src.vqacl import Trainer
+    # from src.vqacl import Trainer
     import sys
     from tqdm import *
     from Question_type import All_task, Category_splits
@@ -188,8 +217,8 @@ if __name__ == "__main__":
     config = Blip2Config.from_pretrained(backbone)
     processor = AutoProcessor.from_pretrained(backbone)
     # model = Blip2ForConditionalGeneration.from_pretrained(backbone, config=config)
-    model = NaiveBLIP2.from_pretrained(backbone, config=config)
-    task = 'q_location'
+    model = BLIP2Prototype.from_pretrained(backbone, config=config)
+    task = 'q_recognition'
     save_path = f'snap/test/{task}_LAST.pth'
     device = 'cuda'
     model = model.to(device)
@@ -217,10 +246,9 @@ if __name__ == "__main__":
                 task=task,
                 cates=Category_splits['G1']
             )
-    dataset = FilteredVQAFineTuneDataset(dataset)
     train_loader_cate = DataLoader(
-                dataset, batch_size=80, shuffle=True,
-                num_workers=4, pin_memory=True, sampler=None,
+                dataset, batch_size=5, shuffle=True,
+                num_workers=0, pin_memory=True, sampler=None,
                 collate_fn=dataset.collate_fn)
     dataset = VQAFineTuneDataset(
                 coco_Ours,
@@ -235,25 +263,17 @@ if __name__ == "__main__":
                 task=task,
                 cates=[i for i in range(80)]
             )
-    dataset = FilteredVQAFineTuneDataset(dataset)
     val_loader_cate =  DataLoader(
-                dataset, batch_size=1, shuffle=False,
-                num_workers=4, pin_memory=True, sampler=None,
+                dataset, batch_size=2, shuffle=False,
+                num_workers=0, pin_memory=True, sampler=None,
                 collate_fn=dataset.collate_fn, drop_last=False)
     epoch_results = {
                         'loss': 0.,
                     }
-    # config.use_decoder_only_language_model = False
-    # for name, param in model.vision_model.named_parameters():
-    #     param.requires_grad = False
-    # model.vision_model = model.vision_model.eval()
-    # print("freeze vision encoder")
-    # for name, param in model.language_model.named_parameters():
-    #     param.requires_grad = False
     eos_token_id = processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.05)
-    num_epochs = 3
-    trainer = Trainer(args, All_task)
+    num_epochs = 1
+    # trainer = Trainer(args, All_task)
     def preprocess(text):
         # Convert to lowercase, strip whitespace, remove punctuation, etc.
         text = text.lower().strip()
@@ -292,13 +312,13 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         with tqdm(total=len(train_loader_cate), desc=f'Epoch {epoch + 1}/{num_epochs}', unit='batch') as pbar:
             for batch in tqdm(train_loader_cate):
-                pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-                input_ids = batch['input_ids'].to(device) # bs, 20
-                lm_labels = batch["target_ids"].to(device) 
-                attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
-                output = model(input_ids=input_ids,pixel_values=pixel_values,attention_mask=attention_mask, 
-                    labels=lm_labels)
-                loss = output.loss
+                # pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+                # input_ids = batch['input_ids'].to(device) # bs, 20
+                # lm_labels = batch["target_ids"].to(device)
+                # attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
+                # output = model.train_step(batch, 0, args.proto_alpha, args.proto_beta)
+                output = model.test_step(batch, 0)
+                loss = output["loss"]
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()

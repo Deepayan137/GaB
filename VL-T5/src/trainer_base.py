@@ -60,7 +60,7 @@ class TrainerBase(object):
             set_global_logging_level(logging.ERROR, ["transformers"])
 
     def create_config(self):
-        from transformers import T5Config, BartConfig, Blip2Config
+        from transformers import T5Config, BartConfig, Blip2Config, InstructBlipConfig 
 
         if 't5' in self.args.backbone:
             config_class = T5Config
@@ -75,23 +75,23 @@ class TrainerBase(object):
 
         args = self.args
 
-        # config.feat_dim = args.feat_dim
-        # config.pos_dim = args.pos_dim
-        # config.n_images = 2
+        config.feat_dim = args.feat_dim
+        config.pos_dim = args.pos_dim
+        config.n_images = 2
 
-        # config.use_vis_order_embedding = args.use_vis_order_embedding
+        config.use_vis_order_embedding = args.use_vis_order_embedding
 
-        # config.dropout_rate = args.dropout
-        # config.dropout = args.dropout
-        # config.attention_dropout = args.dropout
-        # config.activation_dropout = args.dropout
+        config.dropout_rate = args.dropout
+        config.dropout = args.dropout
+        config.attention_dropout = args.dropout
+        config.activation_dropout = args.dropout
 
-        # config.use_vis_layer_norm = args.use_vis_layer_norm
-        # config.individual_vis_layer_norm = args.individual_vis_layer_norm
-        # config.losses = args.losses
+        config.use_vis_layer_norm = args.use_vis_layer_norm
+        config.individual_vis_layer_norm = args.individual_vis_layer_norm
+        config.losses = args.losses
 
-        # config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
-        # config.classifier = args.classifier
+        config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
+        config.classifier = args.classifier
 
         return config
 
@@ -267,45 +267,80 @@ class TrainerBase(object):
     def save(self, name):
         if not os.path.isdir(self.args.output):
             os.makedirs(self.args.output, exist_ok=True)
-        if self.args.fp16:
-            scaler = self.scaler.state_dict()
-        else:
-            scaler = {}
-        state = {
-            "model":self.model.state_dict(),
-            "optimizer":self.optim.state_dict(),
-            "scaler": scaler,
-            "examplar":self.Examplar_set
-        }
+        # if not self.args.distributed or self.args.local_rank == 0:
         savepath = os.path.join(self.args.output, "%s.pth" % name)
-        print(f"Saving model at {savepath}")
-        torch.save(state, savepath)
+        state_dict_to_save = {"optimizer": self.optim.state_dict(), "examplar": self.Examplar_set}
+        try:
+            Q_prototype = self.model.Q_prototype
+            V_prototype = self.model.V_prototype
+            state_dict_to_save["Q_prototype"] = Q_prototype
+            state_dict_to_save["V_prototype"] = V_prototype
+            # torch.save(Q_prototype, args.output + "/Q_prototype.pt")
+            # torch.save(V_prototype, args.output + "/V_prototype.pt")
+        except:
+            print('save prototype error')
+        if self.args.fp16:
+            state_dict_to_save["scaler"] = self.scaler.state_dict()
+
+        # Access model depending on whether it's distributed or not
+        actual_model = self.model.module if self.args.distributed else self.model
+
+        if self.args.ft_layers == 'full':
+            state_dict_to_save["model"] = {
+            'query_tokens': actual_model.query_tokens.data, 
+            'language_projection':actual_model.language_projection.state_dict(),
+            'qformer':actual_model.qformer.state_dict()}
+        elif self.args.ft_layers == 'query_tokens':
+            state_dict_to_save["model"] = {
+            'query_tokens': actual_model.query_tokens.data, 
+            'language_projection':actual_model.language_projection.state_dict()}
+        elif self.args.ft_layers == 'last layer':
+            num_layers = len(actual_model.qformer.encoder.layer)
+            state_dict_to_save["model"] = {
+            'query_tokens': actual_model.query_tokens.data,
+            'language_projection':actual_model.language_projection.state_dict(),
+            'last_layer': actual_model.qformer.encoder.layer[num_layers - 1].state_dict()}
+
+        print(f"Saving model at {self.args.ft_layers} parameters @ {savepath}")
+        torch.save(state_dict_to_save, savepath)
+
+
 
     def load(self, path, loc=None):
         if loc is None and hasattr(self.args, 'gpu'):
             loc = f'cuda:{self.args.gpu}'
-        # state_dict = torch.load("%s.pth" % path, map_location=loc)
+
         if not path.endswith('.pth'):
             path = "%s.pth" % path
         checkpoint = torch.load(path, map_location=loc)
-        original_keys = list(checkpoint['model'].keys())
-        for key in original_keys:
-            if key.startswith("module.vis_encoder."):
-                new_key = 'module.encoder.' + key[len("module.vis_encoder."):]
-                checkpoint['model'][new_key] = checkpoint['model'].pop(key)
 
-            if key.startswith("module.model.vis_encoder."):
-                new_key = 'module.model.encoder.' + key[len("module.model.vis_encoder."):]
-                checkpoint['model'][new_key] = checkpoint['model'].pop(key)
-
-        # results = self.model.load_state_dict(state_dict, strict=False)
-        result = self.model.load_state_dict(checkpoint["model"], strict=False)
+        # Access model depending on whether it's distributed or not
+        actual_model = self.model.module if self.args.distributed else self.model
+        # Load different components based on ft_layers
+        if self.args.ft_layers == 'full':
+            actual_model.qformer.load_state_dict(checkpoint["model"]["qformer"], strict=False)
+            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+        elif self.args.ft_layers == 'query_tokens':
+            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+        if self.args.ft_layers =='last layer':
+            num_layers = len(actual_model.qformer.encoder.layer)
+            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+            actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
+            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
         self.optim.load_state_dict(checkpoint["optimizer"])
+        if "Q_prototype" in checkpoint.keys():
+            self.model.Q_prototype = checkpoint["Q_prototype"]
+        if "V_prototype" in checkpoint.keys():
+            self.model.V_prototype = checkpoint["V_prototype"]
         if "examplar" in checkpoint.keys():
             self.Examplar_set = checkpoint["examplar"]
         if self.args.fp16:
             self.scaler.load_state_dict(checkpoint["scaler"])
-        # self.epoch_idx = checkpoint["epoch_idx"]
+
         if self.verbose:
             print('Model loaded from ', path)
-            pprint(result)
+
+
+

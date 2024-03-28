@@ -1,4 +1,5 @@
 import os
+import sys
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader, Dataset, Sampler
 from pathlib import Path
@@ -21,7 +22,7 @@ from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 
 
-import sys
+from src.instruction import Instructions, No_Instructions
 sys.path.append("..")
 from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_task_list
 
@@ -44,22 +45,21 @@ class VQAFineTuneDataset(Dataset):
         self.topk = topk
         self.verbose = verbose
         self.args = args
-
         self.mode = mode
 
         # Loading datasets to data
         self.sources = split.split(',')
-        
-
-        if 'blip' in self.args.backbone:
+        if 'instructblip' in self.args.backbone:
+            self.processor = AutoProcessor.from_pretrained("Salesforce/instructblip-vicuna-7b")
+        elif 'blip' in self.args.backbone:
             self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
-
             if args.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
                         [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
                 special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
                 num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
-        
+        self.processor.tokenizer.padding_side = 'right'
+        self.processor.tokenizer.truncation_side = 'right'
         self.answer_normalizer = VQAEvaluator()
 
         self.img_ids_to_source = {}
@@ -122,6 +122,8 @@ class VQAFineTuneDataset(Dataset):
         self.n_boxes = args.n_boxes
         data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
+        self.instruction = Instructions[task]
+        self.task = task
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),
@@ -166,10 +168,11 @@ class VQAFineTuneDataset(Dataset):
                 sent = datum['sent']
             elif 'question' in datum:
                 sent = datum['question']
+            # if 'instructblip' in self.args.backbone:
+            max_length = 20
             sent = f"Question: {sent.lower()} Answer:"
-            inputs = self.processor(image, text=sent, max_length=20, 
+            inputs = self.processor(image, text=sent, max_length=max_length, 
                 truncation=True, return_tensors="pt")
-
             out_dict['pixel_values'] = inputs['pixel_values']
 
 
@@ -183,6 +186,7 @@ class VQAFineTuneDataset(Dataset):
         out_dict['sent'] = sent
         out_dict['input_ids'] = inputs["input_ids"]
         out_dict['input_length'] = len(inputs["input_ids"][0])
+        
 
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
@@ -209,7 +213,7 @@ class VQAFineTuneDataset(Dataset):
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
 
-                target_ids = self.procesor.tokenizer.encode(answer, max_length=10, truncation=True)
+                target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
 
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
@@ -255,7 +259,9 @@ class VQAFineTuneDataset(Dataset):
         B = len(batch)
         S_W_L = max(entry['input_length'] for entry in batch)
         input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
-
+        if 'qformer_input_length' in batch[0]:
+            Q_W_L = max(entry['qformer_input_length'] for entry in batch)
+            qformer_input_ids = torch.zeros(B, Q_W_L, dtype=torch.long)
         if args.use_vision:
             vis_feats = torch.zeros(B, 3, 224, 224, dtype=torch.float)
 
@@ -265,7 +271,9 @@ class VQAFineTuneDataset(Dataset):
         if 'target_ids' in batch[0]:
             T_W_L = max(entry['target_length'] for entry in batch)
             target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
-
+        
+        # if 'instruction_ids' in batch[0]:
+        #     instruction_ids = torch.ones(B, len(batch[0]['instruction_ids']), dtype=torch.float)
         sentences = []
         question_ids = []
         answers = []
@@ -279,17 +287,14 @@ class VQAFineTuneDataset(Dataset):
 
         cate_labels = []
         ques_labels = []
-
         for i, entry in enumerate(batch):
             input_ids[i, :entry['input_length']] = entry['input_ids'][0]
-
+            if 'target_ids' in entry:
+                target_ids[i, :entry['target_length']] = entry['target_ids']
             if args.use_vision:
                 vis_feats[i] += entry['pixel_values'][0]
                 # img_ids.append(entry['img_id'])
                 # img_paths.append(entry['img_path'])
-
-            if 'target_ids' in entry:
-                target_ids[i, :entry['target_length']] = entry['target_ids']
 
             if 'target' in entry:
                 targets[i] += entry['target']
@@ -337,15 +342,13 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['scores'] = torch.FloatTensor(scores)
         batch_entry['labels'] = labels
         batch_entry['img_id'] = img_ids
-
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
-        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
-
-        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -649,11 +652,11 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -665,9 +668,7 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
     verbose = (gpu == 0)
 
     # _dset = VQADataset(split, verbose, task) # 这里不用改动？
-    def cat_loader(CateGroup):
-        
-        cates = Category_splits[CateGroup]
+    def cat_loader(CateGroup, cates):
         dataset = VQAFineTuneDataset_memory(
             coco_Ours,
             Examplar_set,
@@ -687,7 +688,7 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
         if mode == 'train':
             shuffle = len(dataset) > 0 and not sampler
             loader = DataLoader(dataset, 
-                batch_size=batch_size, shuffle=shuffle,
+                batch_size=batch_size, shuffle=shuffle if (sampler is None) else shuffle,
                 num_workers=workers, pin_memory=True, sampler=sampler,
                 collate_fn=dataset.collate_fn)
         else:
@@ -709,9 +710,11 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_trai
     cate_loader = {}
     if args.use_class_hierarchy:
         for idx, CateGroup in enumerate(Category_splits):
-            cate_loader[CateGroup] = cat_loader(CateGroup)
+            cates = Category_splits[CateGroup]
+            cate_loader[CateGroup] = cat_loader(CateGroup, cates)
     else:
-        cate_loader['G1'] = cat_loader('G1')
+        cates = list(range(80))
+        cate_loader['G1'] = cat_loader('G1', cates)
     return cate_loader
 
 
@@ -743,7 +746,7 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
 
     if mode == 'train':
         loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=(sampler is None),
+            dataset, batch_size=batch_size, shuffle=None if (sampler is not None) else True,
             num_workers=workers, pin_memory=True, sampler=sampler,
             collate_fn=dataset.collate_fn)
     else:
@@ -790,9 +793,8 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
     verbose = (gpu == 0)
 
     cate_loader = {}
-    def cat_loader(CateGroup):
-        print(CateGroup, end=',')
-        cates = Category_splits[CateGroup]
+    def cat_loader(CateGroup, cates):
+        print(CateGroup, cates, end=',')
         dataset = VQAFineTuneDataset(
             coco_Ours,
             Examplar_set,
@@ -813,7 +815,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             sampler = None
         if mode == 'train':
             loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=True,
+                dataset, batch_size=batch_size, shuffle=None if (sampler is not None) else True,
                 num_workers=workers, pin_memory=True, sampler=sampler,
                 collate_fn=dataset.collate_fn)
         else:
@@ -833,10 +835,12 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
     total_num = 0
     if args.use_class_hierarchy:
         for idx, CateGroup in enumerate(Category_splits):
-            cate_loader[CateGroup], dataset_num = cat_loader(CateGroup)
+            cates = Category_splits[CateGroup]
+            cate_loader[CateGroup], dataset_num = cat_loader(CateGroup, cates)
             total_num+=dataset_num
     else:
-        cate_loader['G1'], total_num = cat_loader('G1')
+        cates = list(range(80))
+        cate_loader['G1'], total_num = cat_loader('G1', cates)
     return cate_loader, total_num
 
 
@@ -1136,9 +1140,9 @@ if __name__ == "__main__":
     from tqdm import *
     coco_Ours = All_task
     args = parse_args()
-    args.backbone = 'blip'
+    args.backbone = 'instructblip'
     split = f'test'
-    test_memory = True
+    test_memory = False
     if not test_memory:
         train_dset = VQADataset(f"karpathy_{split}", True)
         train_loader, total_num_Q = get_loader(
@@ -1148,9 +1152,9 @@ if __name__ == "__main__":
                     train_dset,
                     split=f'karpathy_{split}', mode='train', batch_size=32,
                     distributed=False, gpu=True,
-                    workers=4,
+                    workers=0,
                     topk=-1,
-                    task='q_recognition',
+                    task='q_location',
                 )
 
         train_loader_cate = train_loader['G1']

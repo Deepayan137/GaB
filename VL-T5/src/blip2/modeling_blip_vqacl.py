@@ -7,9 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import copy
 
 from transformers.models.blip_2.modeling_blip_2 import (
-	Blip2ForConditionalGeneration, Blip2VisionModel, Blip2QFormerModel, Blip2ForConditionalGenerationModelOutput)
-
-
+    Blip2ForConditionalGeneration, Blip2ForConditionalGenerationModelOutput)
 
 class Blip2VQACL(Blip2ForConditionalGeneration):
     main_input_name = "pixel_values"
@@ -72,9 +70,9 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
 
 
     def update_prototype(self, current_Q_prototype, 
-    	current_V_prototype, current_num_Q, 
-    	current_num_V, current_task_id, 
-    	proto_alpha, proto_beta):
+        current_V_prototype, current_num_Q, 
+        current_num_V, current_task_id, 
+        proto_alpha, proto_beta):
 
         if current_task_id not in self.Q_task_cur_proto:
             self.Q_task_cur_proto[current_task_id] = current_Q_prototype
@@ -159,7 +157,6 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
             return_dict=return_dict,
         )
         query_output = query_outputs[0]
-
         language_model_inputs = self.language_projection(query_output)
         language_model_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
@@ -178,18 +175,20 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
 
         if 'current_task_id' in kwargs:
             current_task_id = kwargs['current_task_id']
+    
         if 'proto_update' in kwargs and kwargs['proto_update']:  # only for training
             current_prototype_Q, current_num_Q = self.calculate_current_prototype(input_embeds.to(language_model_inputs.device),
                                                                                   ques_labels)
             current_prototype_V, current_num_V = self.calculate_current_prototype(language_model_inputs,
                                                                                   cate_labels)
-
+            # import pdb;pdb.set_trace()
             if 'memory' in kwargs and kwargs['memory'] == True:
                 loss_memory_Q, loss_memory_V = self.memory_loss(input_embeds.to(language_model_inputs.device),
                                                                 language_model_inputs, ques_labels, cate_labels)
             else:
                 loss_memory_Q, loss_memory_V = 0, 0
 
+            # import pdb;pdb.set_trace()
             # update prototype
             self.update_prototype(current_prototype_Q, current_prototype_V, current_num_Q, current_num_V,
                                   current_task_id, proto_alpha, proto_beta)
@@ -211,8 +210,7 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
 
         # ========================================================
         inputs_embeds = torch.cat([language_model_inputs, input_embeds.to(language_model_inputs.device), 
-        	retrievaled_Q_proto.detach(), retrievaled_V_proto.detach()], dim=1)
-        
+            retrievaled_Q_proto.detach(), retrievaled_V_proto.detach()], dim=1)
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
             B, L = attention_mask.size()
@@ -221,7 +219,6 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
         expected_device = language_model_attention_mask.device
         
         attention_mask = torch.cat([language_model_attention_mask, attention_mask.to(expected_device)], dim=1)
-        
         if self.config.use_decoder_only_language_model:
             outputs = self.language_model(
                 inputs_embeds=inputs_embeds,
@@ -277,20 +274,6 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
         attention_mask: Optional[torch.LongTensor] = None,
         **generate_kwargs,
     ) -> torch.LongTensor:
-        """
-        Overrides `generate` function to be able to use the model as a conditional generator.
-
-        Args:
-            pixel_values (`torch.FloatTensor` of shape (batch_size, num_channels, height, width)):
-                Input images to be processed.
-            input_ids (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
-                The sequence used as a prompt for the generation.
-            attention_mask (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
-                Mask to avoid performing attention on padding token indices
-
-        Returns:
-            captions (list): A list of strings of length batch_size * num_captions.
-        """
         if hasattr(self, "hf_device_map"):
             # preprocess for `accelerate`
             self._preprocess_accelerate()
@@ -309,22 +292,40 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
         query_output = query_outputs.last_hidden_state
 
         language_model_inputs = self.language_projection(query_output)
+        
         language_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
         )
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        attention_mask = torch.cat([language_attention_mask, attention_mask.to(language_attention_mask.device)], dim=1)
+
         if input_ids is None:
             input_ids = (
                 torch.LongTensor([[self.config.text_config.bos_token_id]])
                 .repeat(batch_size, 1)
                 .to(image_embeds.device)
             )
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
-        attention_mask = torch.cat([language_attention_mask, attention_mask.to(language_attention_mask.device)], dim=1)
-
         # concatenate query embeddings with prompt embeddings
         inputs_embeds = self.get_input_embeddings()(input_ids)
         inputs_embeds = torch.cat([language_model_inputs, inputs_embeds.to(language_model_inputs.device)], dim=1)
+        
+        # inputs_embeds = self.get_input_embeddings()(input_ids)
+        # retrievaled_Q_proto, max_idx_Q, acc_Q = self.cosine_similarity_multi(self.Q_prototype, torch.mean(inputs_embeds, dim=1))  # [bs, 768]
+        # retrievaled_Q_proto = retrievaled_Q_proto.unsqueeze(1)  # [bs, 1, 768]
+        # retrievaled_V_proto, max_idx_V, acc_V = self.cosine_similarity_multi(self.V_prototype, torch.mean(language_model_inputs, dim=1))  # [bs, 768]
+        # retrievaled_V_proto = retrievaled_V_proto.unsqueeze(1)  # [bs, 1, 768]
+
+        # inputs_embeds = torch.cat([language_model_inputs, inputs_embeds.to(language_model_inputs.device), 
+        #     retrievaled_Q_proto.detach(), retrievaled_V_proto.detach()], dim=1)
+        # if attention_mask is None:
+        #     attention_mask = torch.ones_like(input_ids)
+        #     B, L = attention_mask.size()
+        #     VL = inputs_embeds.size(1) - L
+        #     language_attention_mask = attention_mask.new_ones(B, VL).to(language_model_inputs.device)
+        # expected_device = language_attention_mask.device
+        
+        # attention_mask = torch.cat([language_attention_mask, attention_mask.to(expected_device)], dim=1)
 
         outputs = self.language_model.generate(
             inputs_embeds=inputs_embeds,
