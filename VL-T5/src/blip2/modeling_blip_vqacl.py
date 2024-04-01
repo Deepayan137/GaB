@@ -84,9 +84,7 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
             else:
                 self.Q_prototype[current_task_id] = current_Q_prototype[current_task_id]
         else:
-
             self.Q_task_cur_proto[current_task_id] = current_Q_prototype
-
             if current_task_id != 0:
                 if current_task_id not in self.Q_task_mem_proto:
                     current_Q_prototype_mem = current_Q_prototype.clone()
@@ -309,7 +307,7 @@ class Blip2VQACL(Blip2ForConditionalGeneration):
         # concatenate query embeddings with prompt embeddings
         inputs_embeds = self.get_input_embeddings()(input_ids)
         inputs_embeds = torch.cat([language_model_inputs, inputs_embeds.to(language_model_inputs.device)], dim=1)
-        
+       
         # inputs_embeds = self.get_input_embeddings()(input_ids)
         # retrievaled_Q_proto, max_idx_Q, acc_Q = self.cosine_similarity_multi(self.Q_prototype, torch.mean(inputs_embeds, dim=1))  # [bs, 768]
         # retrievaled_Q_proto = retrievaled_Q_proto.unsqueeze(1)  # [bs, 1, 768]

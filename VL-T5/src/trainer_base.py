@@ -92,7 +92,7 @@ class TrainerBase(object):
 
         config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
         config.classifier = args.classifier
-
+        # config.ft_layers = "last"
         return config
 
 
@@ -270,36 +270,41 @@ class TrainerBase(object):
         # if not self.args.distributed or self.args.local_rank == 0:
         savepath = os.path.join(self.args.output, "%s.pth" % name)
         state_dict_to_save = {"optimizer": self.optim.state_dict(), "examplar": self.Examplar_set}
-        try:
-            Q_prototype = self.model.Q_prototype
-            V_prototype = self.model.V_prototype
-            state_dict_to_save["Q_prototype"] = Q_prototype
-            state_dict_to_save["V_prototype"] = V_prototype
-            # torch.save(Q_prototype, args.output + "/Q_prototype.pt")
-            # torch.save(V_prototype, args.output + "/V_prototype.pt")
-        except:
-            print('save prototype error')
+        # Access model depending on whether it's distributed or not
+        actual_model = self.model.module if self.args.distributed else self.model
+        if self.args.blip_model != "naiveblip":
+            try:
+
+                state_dict_to_save["Q_prototype"] = actual_model.Q_prototype
+                state_dict_to_save["V_prototype"] = actual_model.V_prototype
+                state_dict_to_save["Q_task_mem_proto"] = actual_model.Q_task_mem_proto
+                state_dict_to_save["V_task_mem_proto"] = actual_model.V_task_mem_proto
+                state_dict_to_save["Q_prototype_num"] = actual_model.Q_prototype_num
+                state_dict_to_save["V_prototype_num"] = actual_model.V_prototype_num
+            except Exception as e:
+                print(e)
+                print('save prototype error')
         if self.args.fp16:
             state_dict_to_save["scaler"] = self.scaler.state_dict()
 
-        # Access model depending on whether it's distributed or not
-        actual_model = self.model.module if self.args.distributed else self.model
-
-        if self.args.ft_layers == 'full':
-            state_dict_to_save["model"] = {
-            'query_tokens': actual_model.query_tokens.data, 
-            'language_projection':actual_model.language_projection.state_dict(),
-            'qformer':actual_model.qformer.state_dict()}
-        elif self.args.ft_layers == 'query_tokens':
-            state_dict_to_save["model"] = {
-            'query_tokens': actual_model.query_tokens.data, 
-            'language_projection':actual_model.language_projection.state_dict()}
-        elif self.args.ft_layers == 'last layer':
-            num_layers = len(actual_model.qformer.encoder.layer)
-            state_dict_to_save["model"] = {
-            'query_tokens': actual_model.query_tokens.data,
-            'language_projection':actual_model.language_projection.state_dict(),
-            'last_layer': actual_model.qformer.encoder.layer[num_layers - 1].state_dict()}
+        if 'blip' in self.args.backbone:
+            if self.args.ft_layers == 'full':
+                state_dict_to_save["model"] = {
+                'query_tokens': actual_model.query_tokens.data, 
+                'language_projection':actual_model.language_projection.state_dict(),
+                'qformer':actual_model.qformer.state_dict()}
+            elif self.args.ft_layers == 'query_tokens':
+                state_dict_to_save["model"] = {
+                'query_tokens': actual_model.query_tokens.data, 
+                'language_projection':actual_model.language_projection.state_dict()}
+            elif self.args.ft_layers == 'last layer':
+                num_layers = len(actual_model.qformer.encoder.layer)
+                state_dict_to_save["model"] = {
+                'query_tokens': actual_model.query_tokens.data,
+                'language_projection':actual_model.language_projection.state_dict(),
+                'last_layer': actual_model.qformer.encoder.layer[num_layers - 1].state_dict()}
+        elif 't5' in self.args.backbone:
+            state_dict_to_save["model"] = actual_model.state_dict()
 
         print(f"Saving model at {self.args.ft_layers} parameters @ {savepath}")
         torch.save(state_dict_to_save, savepath)
@@ -313,29 +318,40 @@ class TrainerBase(object):
         if not path.endswith('.pth'):
             path = "%s.pth" % path
         checkpoint = torch.load(path, map_location=loc)
-
         # Access model depending on whether it's distributed or not
         actual_model = self.model.module if self.args.distributed else self.model
-        # Load different components based on ft_layers
-        if self.args.ft_layers == 'full':
-            actual_model.qformer.load_state_dict(checkpoint["model"]["qformer"], strict=False)
-            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-        elif self.args.ft_layers == 'query_tokens':
-            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-        if self.args.ft_layers =='last layer':
-            num_layers = len(actual_model.qformer.encoder.layer)
-            actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-            actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
-            actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-        self.optim.load_state_dict(checkpoint["optimizer"])
-        if "Q_prototype" in checkpoint.keys():
-            self.model.Q_prototype = checkpoint["Q_prototype"]
-        if "V_prototype" in checkpoint.keys():
-            self.model.V_prototype = checkpoint["V_prototype"]
+        if 'blip' in self.args.backbone:
+            # Load different components based on ft_layers
+            if self.args.ft_layers == 'full':
+                actual_model.qformer.load_state_dict(checkpoint["model"]["qformer"], strict=False)
+                actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+                actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+            elif self.args.ft_layers == 'query_tokens':
+                actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+                actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+            if self.args.ft_layers =='last layer':
+                num_layers = len(actual_model.qformer.encoder.layer)
+                actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+                actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
+                actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+            self.optim.load_state_dict(checkpoint["optimizer"])
+        elif 't5' in self.args.backbone:
+            actual_model.load_state_dict(checkpoint["model"])
+        if self.args.blip_model != "naiveblip":
+            if "Q_prototype" in checkpoint.keys():
+                actual_model.Q_prototype = checkpoint["Q_prototype"]
+            if "V_prototype" in checkpoint.keys():
+                actual_model.V_prototype = checkpoint["V_prototype"]
+            if "Q_task_mem_proto" in checkpoint.keys():
+                actual_model.Q_task_mem_proto = checkpoint["Q_task_mem_proto"]
+            if "V_task_mem_proto" in checkpoint.keys():
+                actual_model.V_task_mem_proto = checkpoint["V_task_mem_proto"]
+            if "Q_prototype_num" in checkpoint.keys():
+                actual_model.Q_prototype_num = checkpoint["Q_prototype_num"]
+            if "V_prototype_num" in checkpoint.keys():
+                actual_model.V_prototype_num = checkpoint["V_prototype_num"]
         if "examplar" in checkpoint.keys():
-            self.Examplar_set = checkpoint["examplar"]
+            actual_model.Examplar_set = checkpoint["examplar"]
         if self.args.fp16:
             self.scaler.load_state_dict(checkpoint["scaler"])
 

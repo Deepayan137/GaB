@@ -171,7 +171,6 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         result = {}
         result['token_ids'] = output
         result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
-        import pdb;pdb.set_trace()
         return result
 
     def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False):

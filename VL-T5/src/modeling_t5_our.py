@@ -103,7 +103,6 @@ class VisualEmbedding(nn.Module):
 
         B, N, _ = feats.size()
         assert pos.size() == (B, N, 4)
-
         feat_embedding = self.feat_embedding(feats)
 
         device = feats.device

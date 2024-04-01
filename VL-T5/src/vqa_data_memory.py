@@ -26,12 +26,13 @@ from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
 workspace_dir = project_dir.parent
-dataset_dir = workspace_dir.joinpath('../datasets/').resolve()
+dataset_dir = workspace_dir.joinpath('datasets/').resolve()
 coco_dir = dataset_dir.joinpath('COCO')
 vg_dir = dataset_dir.joinpath('VG')
 coco_img_dir = coco_dir.joinpath('images/')
 coco_feature_dir = coco_dir.joinpath('features')
 vqa_dir = dataset_dir.joinpath('vqa')
+
 
 
 class VQAFineTuneDataset(Dataset):
@@ -117,6 +118,8 @@ class VQAFineTuneDataset(Dataset):
                 print("    cate set:", self.cate_set, ', miss cate:', set(cates).difference(self.cate_set))
 
         self.n_boxes = args.n_boxes
+        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_to_h5 = {
             'train': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
             'minival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
@@ -368,11 +371,11 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -457,6 +460,8 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
+        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_to_h5 = {
             'train': coco_feature_dir.joinpath(f'train2014_obj36.h5'),
             'minival': coco_feature_dir.joinpath(f'val2014_obj36.h5'),
@@ -683,7 +688,8 @@ class VQAFineTuneDataset_memory(Dataset):
                 cate_labels.append(entry['img_cate'])
             if 'ques_label' in entry:
                 ques_labels.append(entry['ques_label'])
-
+            # if 'img_id' in entry:
+            #     img_ids.append(entry['img_id'])
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
             word_mask = target_ids != self.tokenizer.pad_token_id
@@ -705,15 +711,15 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['all_answers'] = all_answers
         batch_entry['scores'] = torch.FloatTensor(scores)
         batch_entry['labels'] = labels
-        batch['img_ids'] = img_ids
+        # batch['img_ids'] = img_ids
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
 
-        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1)
-        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 

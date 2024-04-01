@@ -75,6 +75,8 @@ class Trainer(TrainerBase):
         if 'blip' in args.backbone:
             from vqa_data_blip import VQADataset
             self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+        elif 't5' in args.backbone:
+           from vqa_data_memory import VQADataset 
         self.train_dset = VQADataset(args.train, True)
         self.val_dset = VQADataset(args.valid, True)
         self.test_dset = VQADataset(args.test, True)
@@ -88,11 +90,15 @@ class Trainer(TrainerBase):
         from vqa_model import VLT5VQA
         from vqa_model_blip import NaiveBLIP2, BLIP2Prototype
         model_kwargs = {'ft_layers':args.ft_layers}
+        # model_kwargs = {}
         if 't5' in args.backbone:
             model_class = VLT5VQA
         elif 'blip' in args.backbone:
             from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
-            model_class = BLIP2Prototype
+            if args.blip_model == "naiveblip":
+                model_class = NaiveBLIP2
+            else:
+                model_class = BLIP2Prototype
 
         config = self.create_config()
         self.tokenizer = self.create_tokenizer()
@@ -112,7 +118,8 @@ class Trainer(TrainerBase):
             from time import time
             start = time()
         self.model = self.model.to(args.gpu)
-        self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+        if 'blip' in self.args.backbone:
+            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
         if args.multiGPU:
             if args.distributed:
                 self.model = DDP(self.model, device_ids=[args.gpu],
@@ -148,6 +155,8 @@ class Trainer(TrainerBase):
     def train(self, load=False):
         if 'blip' in args.backbone:
             from vqa_data_blip import get_loader, get_loader_test, VQADataset, get_loader_memory
+        elif 't5' in args.backbone:
+            from vqa_data_memory import get_loader, get_loader_test, VQADataset, get_loader_memory
         latest_task_idx = -1
         if load:
             latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
@@ -301,6 +310,8 @@ class Trainer(TrainerBase):
                             total_train_num = 2 * len(self.train_loader_cate.dataset)
                         else:
                             total_train_num = len(self.train_loader_cate.dataset)
+                        if 't5' in self.args.backbone:
+                            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(total_train_num)
                         if self.args.fp16 and _use_native_amp:
                             self.scaler = torch.cuda.amp.GradScaler()
                         elif _use_apex:
@@ -504,7 +515,7 @@ class Trainer(TrainerBase):
 
         for task_idx, task in enumerate(self.task_list):
             print('======================== Now is task "', task, '" ========================')
-            if 'blip' in self.args.backbone or 'instructblip' in self.args.backbone:
+            if 'blip' in self.args.backbone:
                 from vqa_data_blip import get_loader_test
             test_loader = get_loader_test(
                 args,
@@ -526,8 +537,8 @@ class Trainer(TrainerBase):
                 if os.path.exists(last_path+'.pth') and not self.args.now_train:
                     self.load(last_path)
                     task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-                    task = self.task_list[0]
-                self.test_single(task)
+                    # task = self.task_list[0]
+                self.test(task)
             else:
                 task = self.task_list[-1]
                 last_path = os.path.join(self.args.output, f'{task}_LAST')
@@ -565,8 +576,8 @@ class Trainer(TrainerBase):
         pred_dir = os.path.join(self.args.output, 'predictions')
         if not os.path.exists(pred_dir):
             os.makedirs(pred_dir, exist_ok=True)
-        fname = os.path.basename(self.args.backbone)
-        with open(f"{pred_dir}/{fname}_{task}_gt_pred.json", 'w') as f:
+        # fname = os.path.basename(self.args.backbone)
+        with open(f"{pred_dir}/{task}_gt_pred.json", 'w') as f:
             json.dump(predict_gt_dict, f, indent=4)
 
 
@@ -666,7 +677,7 @@ class Trainer(TrainerBase):
                         batch['sent'][0], batch['answers'][0]
                 pbar.update(1)
             pbar.close()
-        print(ans_list[:10])
+        # print(ans_list[:10])
         if self.args.distributed:
             dist.barrier()
 
@@ -705,9 +716,11 @@ def main_worker(gpu, args):
     print(f'Building train loader at GPU {gpu}')
 
     coco_Ours = All_task
-
-
-    trainer = Trainer(args, coco_Ours, train=True)
+    if args.train_multi:
+        from src.multi.trainer_multi import TrainerMulti
+        trainer = TrainerMulti(args, coco_Ours, train=True)
+    else:
+        trainer = Trainer(args, coco_Ours, train=True)
     if args.now_train:
         if args.checkpoint != 'None':
             trainer.train(load=True)

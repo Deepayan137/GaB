@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_vqaclblip
+#SBATCH --job-name=train_naiveblip_multi2
 #SBATCH -p gpupart
 #SBATCH -A staff
 #SBATCH --nodes=1               # Number of nodes
@@ -8,11 +8,11 @@
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_vqaclblip.out
+#SBATCH -o logs/train_naiveblip_multi2.out
 #SBATCH --signal=B:SIGTERM@300
 
 
-name=vqaclblip
+name=naiveblip_multi
 
 output=snap/$name
 
@@ -47,6 +47,8 @@ python -m torch.distributed.launch \
         --now_train \
         --train_from_scratch False \
         --show_train_progress False \
-        --use_class_hierarchy True \
+        --use_class_hierarchy False \
         --ft_layers 'query_tokens' \
-        --memory
+        --train_multi True \
+        --blip_model "naiveblip" \
+        --checkpoint 'snap/naiveblip_multi/q_causal1'

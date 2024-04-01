@@ -38,7 +38,7 @@ vqa_dir = dataset_dir.joinpath('vqa')
 
 
 class VQAFineTuneDataset(Dataset):
-    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', task='q_what', cates=[0,1,2]):
+    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', task='q_recognition', cates=[0,1,2]):
         super().__init__()
 
         self.raw_dataset = raw_dataset
@@ -49,9 +49,7 @@ class VQAFineTuneDataset(Dataset):
 
         # Loading datasets to data
         self.sources = split.split(',')
-        if 'instructblip' in self.args.backbone:
-            self.processor = AutoProcessor.from_pretrained("Salesforce/instructblip-vicuna-7b")
-        elif 'blip' in self.args.backbone:
+        if 'blip' in self.args.backbone:
             self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
             if args.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
@@ -120,8 +118,8 @@ class VQAFineTuneDataset(Dataset):
                 else:
                     print("No class hierarchy")
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
-        # data_dir = "/nfs/data_todi/datasets/COCO2014/"
+        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.instruction = Instructions[task]
         self.task = task
         self.source_dir = {
@@ -431,8 +429,8 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
-        # data_dir = "/nfs/data_todi/datasets/COCO2014/"
+        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),

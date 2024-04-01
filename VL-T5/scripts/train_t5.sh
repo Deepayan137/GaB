@@ -1,5 +1,5 @@
 # The name of experiment
-name='vqaclblip'
+name=vqaclt5
 
 output=snap/$name
 
@@ -10,18 +10,25 @@ python src/vqacl.py \
         --valid karpathy_val \
         --test karpathy_test \
         --optim adamw \
-        --warmup_ratio 0.1 \
+        --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
         --lr 1e-4 \
-        --epochs 3 \
+        --epochs 1 \
         --num_workers 4 \
-        --backbone 'Salesforce/blip2-opt-2.7b' \
+        --backbone 't5-base' \
         --output $output ${@:2} \
         --num_beams 5 \
         --batch_size 80 \
-        --valid_batch_size 1 \
-        --optim 'blip_adamw' \
+        --valid_batch_size 80 \
+        --from_scratch \
+        --optim 'adamw' \
+        --m_size 5000 \
+        --comp_cate G-1 \
+        --now_train \
         --local-rank 0 \
-        --eval_blip True \
+        --show_train_progress True \
+        --use_class_hierarchy True \
+        --train_from_scratch False \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_multi/q_causal_LAST'
+        --memory \
+        # --checkpoint "snap/vqaclt5/q_recognition_LAST"

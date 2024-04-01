@@ -1,5 +1,5 @@
 # The name of experiment
-name=vqaclblip
+name=naiveblip_multi
 
 output=snap/$name
 
@@ -13,7 +13,7 @@ python src/vqacl.py \
         --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
         --lr 1e-6 \
-        --epochs 1 \
+        --epochs 2 \
         --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
@@ -27,7 +27,9 @@ python src/vqacl.py \
         --now_train \
         --local-rank 0 \
         --show_train_progress True \
-        --use_class_hierarchy True \
+        --use_class_hierarchy False \
         --train_from_scratch False \
         --ft_layers 'query_tokens' \
-        --memory \
+        --train_multi True \
+        --blip_model "naiveblip"\
+        --checkpoint 'snap/naiveblip_multi/q_causal1'

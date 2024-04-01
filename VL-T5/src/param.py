@@ -104,7 +104,7 @@ def parse_args(parse=True, **optional_kwargs):
 
     # Training
     parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--valid_batch_size', type=int, default=None)
+    parser.add_argument('--valid_batch_size', type=int, default=80)
     parser.add_argument('--optim', default='adamw')
     parser.add_argument('--warmup_ratio', type=float, default=0.05)
     parser.add_argument('--weight_decay', type=float, default=0.01)
@@ -199,7 +199,8 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--show_train_progress", default=False, type=str2bool)
     parser.add_argument("--log_all_runs", default=False, type=str2bool)
     parser.add_argument("--ft_layers", type=str, choices=['full', 'query_tokens', 'query_tokens_random', 'query_tokens_task'], default='only query tokens')
-
+    parser.add_argument("--train_multi", default=False, type=str2bool)
+    parser.add_argument("--blip_model", type=str,default="naiveblip")
     # Parse the arguments.
     if parse:
         args = parser.parse_args()

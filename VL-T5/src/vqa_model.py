@@ -66,7 +66,7 @@ class VLT5VQA(VLT5):
 
 
     @torch.no_grad()
-    def test_step(self, batch, **kwargs):
+    def test_step(self, batch, task, **kwargs):
         self.eval()
         device = next(self.parameters()).device
         vis_feats = batch['vis_feats'].to(device)
