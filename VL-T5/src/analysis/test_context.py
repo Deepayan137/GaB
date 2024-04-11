@@ -1,3 +1,5 @@
+import json
+import random
 import torch
 import torch.nn as nn
 from transformers import T5Config, BartConfig, Blip2Config
@@ -41,28 +43,73 @@ model.to(device)
 # model.language_projection.load_state_dict(ckpt['model']['language_projection'])
 
 
-def inference(image_path, question, max_new_tokens=2):
+def inference_qa(image_path, question, max_new_tokens=2):
 	image = Image.open(image_path).convert("RGB")
-	inputs = processor(image, text=question, max_length=20, 
-		truncation=True, return_tensors="pt")
+	inputs = processor(image, text=question, 
+		truncation=True, return_tensors="pt").to(device)
 	# target_ids = processor.tokenizer.encode(answer, max_length=10, truncation=True)
 	pixel_values = inputs["pixel_values"].to(device)
 	input_ids = inputs["input_ids"].to(device)
 	# target_ids = target_ids.to(device)
-	output = model.generate(input_ids=input_ids,pixel_values=pixel_values,
-	    max_new_tokens=max_new_tokens,repetition_penalty=1, num_beams=5, length_penalty=-1)
+	output = model.generate(**inputs, max_new_tokens=20
+	    # max_new_tokens=max_new_tokens,repetition_penalty=1, num_beams=5, length_penalty=-1
+	    )
 	pred_ans =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 	return pred_ans
 
+def inference_cap(image_path, prompt=None, max_new_tokens=20):
+	image = Image.open(image_path).convert("RGB")
+	if not prompt:
+		inputs = processor(image, return_tensors="pt").to(device)
+	else:
+		inputs = processor(image, text=prompt, return_tensors="pt").to(device)
+	generated_ids = model.generate(**inputs, max_new_tokens=20)
+	generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+	return generated_text
+
+def gen_cap_loop():
+	cap_dict = {}
+	for task in tqdm(All_task):
+		path = f"../datasets/vqa/Partition_Q_V2/karpathy_train_{task}.json"
+		
+		f = open(path, 'r')
+		data = json.load(f)
+		subset = random.sample(data, 10)
+		cap_dict[task] = []
+		for item in subset:
+			img_name = item['img_id']+'.jpg'
+			if 'train2014' in img_name:
+				split="train"
+			else:
+				split = 'val'
+			img_dir = f"../datasets/COCO/{split}2014/"
+			img_path = os.path.join(img_dir, img_name)
+			cap = inference_cap(img_path)
+			cap_dict[task].append((img_name, cap))
+	with open('test.json', 'w')	as f:
+		json.dump(cap_dict, f, indent=4)
 if __name__ == "__main__":
-	data_dir = "/nfs/data_todi/datasets/COCO2014/val2014"
-	# data_dir = "."
-	image_name = "COCO_val2014_000000263828.jpg"
+	# gen_cap_loop()
+	# data_dir = "/nfs/data_todi/datasets/COCO2014/val2014"
+	# data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO/val2014/"
+	data_dir = '/home/deepayan.das/projects/SG-CLVQA/datasets/gvqa//'
+	image_name = "2343078.jpg"
 	image_path = os.path.join(data_dir, image_name)
-	question = "what material is the seat of the bike made out of?"
+	question = "Who wears the jacket?"
 	sent = f"Question:{question} Answer:"
 	max_new_tokens = 20
-	pred_ans = inference(image_path, sent, max_new_tokens)
+	pred_ans = inference_qa(image_path, sent, max_new_tokens)
 	print(pred_ans)
 	import pdb;pdb.set_trace()
+	# context = [
+ #   		("What is the image of?", "a bedroom"),
+ #   		("Are there frames on the wall?", "Yes"),
+	# ]
+	# question = "what number of frames are on the wall?"
+	# template = "Question: {} Answer: {}."
+
+	# prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"
+	# cap = inference_cap(image_path, prompt="Describe this image in detail.")
+	# print(cap)
+	# import pdb;pdb.set_trace()
  

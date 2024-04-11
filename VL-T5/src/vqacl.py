@@ -89,7 +89,10 @@ class Trainer(TrainerBase):
 
         from vqa_model import VLT5VQA
         from vqa_model_blip import NaiveBLIP2, BLIP2Prototype
-        model_kwargs = {'ft_layers':args.ft_layers}
+        model_kwargs = {'ft_layers':args.ft_layers, 
+        'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool}
+        if args.prompt_pool:
+            print("Activating Learning to Prompt")
         # model_kwargs = {}
         if 't5' in args.backbone:
             model_class = VLT5VQA
@@ -103,7 +106,9 @@ class Trainer(TrainerBase):
         config = self.create_config()
         self.tokenizer = self.create_tokenizer()
         self.model = self.create_model(model_class, config, **model_kwargs)
-
+        self.regularizer = None
+        if isinstance(self.model, tuple):
+            self.model, self.regularizer = self.model
         if 't5' in self.args.tokenizer:
             self.model.resize_token_embeddings(self.tokenizer.vocab_size)
         elif 'bart' in self.args.tokenizer:
@@ -118,6 +123,8 @@ class Trainer(TrainerBase):
             from time import time
             start = time()
         self.model = self.model.to(args.gpu)
+        if self.regularizer is not None:
+            self.regularizer = self.regularizer.to(args.gpu)
         if 'blip' in self.args.backbone:
             self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
         if args.multiGPU:
@@ -223,7 +230,7 @@ class Trainer(TrainerBase):
                 else:
                     All_examplar = []
                     each_memory = 0
-
+                import pdb;pdb.set_trace()
                 # Load the data
                 print("#Loading ", task)
                 print(f'Building train loader at GPU {args.gpu}')
@@ -421,7 +428,8 @@ class Trainer(TrainerBase):
                             break  # Break out of the training loop
                         if self.args.distributed:
                             dist.barrier()
-                
+                if self.regularizer is not None:
+                    self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader_cate,current_task_id=task_idx,proto_alpha=self.args.proto_alpha,proto_beta= self.args.proto_beta,mem_num_Q = 0,total_num_Q=self.task_total_num)
                 print("Saving Last")
                 self.save(task + "_LAST")
         except TerminationError:
@@ -430,6 +438,7 @@ class Trainer(TrainerBase):
 
     def train_step(self, batch, epoch_results, task_idx, each_memory):
         self.optim.zero_grad(set_to_none=True)
+
         if self.args.fp16 and _use_native_amp:
             with autocast():
                 if self.args.distributed:
@@ -455,6 +464,9 @@ class Trainer(TrainerBase):
             (loss_memory_Q_new, loss_memory_V_new) = results['loss_memory_new']
             loss = loss + lambda_Q_new * loss_memory_Q_new + lambda_V_new * loss_memory_V_new
 
+        if self.regularizer is not None:
+            cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
+            loss += cl_reg
         if self.args.fp16 and _use_native_amp:
             self.scaler.scale(loss).backward()
         elif self.args.fp16 and _use_apex:

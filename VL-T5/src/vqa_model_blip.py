@@ -99,8 +99,13 @@ class BLIP2Prototype(Blip2VQACL):
 
 
 class NaiveBLIP2(NaiveBlip2VQACL):
-    def __init__(self, config, num_answers=None, label2ans=None, ft_layers='query_tokens'):
-        super().__init__(config)
+    def __init__(self, config, 
+        num_answers=None, 
+        label2ans=None, 
+        pool_size=None,
+        prompt_pool=False,
+        ft_layers='query_tokens',):
+        super().__init__(config, pool_size, prompt_pool)
         from transformers import AutoProcessor
         self.num_answers = num_answers
         self.label2ans = label2ans
@@ -173,7 +178,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
         return result
 
-    def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False):
+    def train_step(self, batch, current_task_id):
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
         input_ids = batch['input_ids'].to(device) # bs, 20

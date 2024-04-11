@@ -16,7 +16,12 @@ def random_dic(dicts):
 #  10 lingustic-driven task for VQA v2 after judge
 All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory']
-# Comp_task = ['q_subcategory']
+Sg_task = {
+    "function":{
+        "oarlks":["scenetext"],
+    }
+}
+# Comp_task = ['q_subcategory'] [object  attribute   relation    logic   knowledge   scene text
 # All_task = ['q_subcategory']
 # visual-driven task for VQA v2
 Category_splits = {'G1': [58, 48, 55, 36, 64, 1, 70, 73, 42, 15, 6, 18, 49, 59, 31, 2],\
@@ -29,8 +34,8 @@ Category_splits = {'G1': [58, 48, 55, 36, 64, 1, 70, 73, 42, 15, 6, 18, 49, 59, 
 
 import json
 
-# path = "/home/deepayan.das/projects/VQACL/"
-path = "/nfs/data_todi/ddas/projects/VQACL/"
+path = "/home/deepayan.das/projects/VQACL/"
+# path = "/nfs/data_todi/ddas/projects/VQACL/"
 # path="/Users/deep/Projects/VQACL2/"
 with open(os.path.join(path, 'datasets/QuesId_task_map.json')) as fp:
     QuesId_task_map = json.load(fp)

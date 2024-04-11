@@ -118,8 +118,8 @@ class VQAFineTuneDataset(Dataset):
                 else:
                     print("No class hierarchy")
         self.n_boxes = args.n_boxes
-        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
-        data_dir = "/nfs/data_todi/datasets/COCO2014/"
+        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.instruction = Instructions[task]
         self.task = task
         self.source_dir = {
@@ -342,12 +342,10 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['img_id'] = img_ids
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
-
-
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
         return batch_entry
 
 class VQAFineTuneDataset_memory(Dataset):
@@ -429,8 +427,8 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        # data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
-        data_dir = "/nfs/data_todi/datasets/COCO2014/"
+        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
             'minival': os.path.join(data_dir, f'val2014'),

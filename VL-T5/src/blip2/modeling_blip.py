@@ -6,10 +6,84 @@ from torch.nn import CrossEntropyLoss
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import copy
 
-from transformers.models.blip_2.modeling_blip_2 import (
+from transformers.models.blip_2.modeling_blip_2 import (Blip2VisionModel,
 	Blip2ForConditionalGeneration, Blip2QFormerLayer, Blip2QFormerEncoder, Blip2QFormerModel, Blip2ForConditionalGenerationModelOutput)
 from transformers.pytorch_utils import apply_chunking_to_forward
-from transformers.modeling_outputs import (BaseModelOutputWithPastAndCrossAttentions, BaseModelOutputWithPoolingAndCrossAttentions)
+from transformers.modeling_outputs import (BaseModelOutputWithPastAndCrossAttentions, 
+    BaseModelOutputWithPoolingAndCrossAttentions, BaseModelOutputWithPooling)
+
+from src.blip2.prompt import Prompt
+
+class Blip2VisionModelOurs(Blip2VisionModel):
+    def __init__(self, config,
+        prompt_length=5, embedding_key='mean', prompt_init='cls', 
+        prompt_pool=False, pool_size=None, use_prompt_mask=False, top_k=5, 
+        batchwise_prompt=True, prompt_key_init='uniform',prompt_key=False):
+        super().__init__(config)
+        num_patches = 256
+        self.use_prompt_mask = use_prompt_mask
+        embed_dim=config.hidden_size
+        if pool_size is not None and prompt_pool:
+            self.prompt = Prompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
+                    prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
+                    prompt_key_init=prompt_key_init,)
+
+    def forward(self, 
+        pixel_values=None, 
+        output_attentions=None, 
+        output_hidden_states=None,
+        return_dict=None,
+        task_id=-1):
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if pixel_values is None:
+            raise ValueError("You have to specify pixel_values")
+
+        hidden_states = self.embeddings(pixel_values)
+        if hasattr(self, 'prompt'):
+            if self.use_prompt_mask and self.training:
+                start = task_id * self.prompt.top_k
+                end = (task_id + 1) * self.prompt.top_k
+                single_prompt_mask = torch.arange(start, end).to(hidden_states.device)
+                prompt_mask = single_prompt_mask.unsqueeze(0).expand(hidden_states.shape[0], -1)
+                if end > self.prompt.pool_size:
+                    prompt_mask = None
+            else:
+                prompt_mask = None
+            cls_features = hidden_states[:, 0]
+            res = self.prompt(hidden_states, prompt_mask=prompt_mask, cls_features=cls_features)
+            self.total_prompt_len = res['total_prompt_len']
+            hidden_states = res['prompted_embedding']
+        else:
+            res = dict()
+
+        encoder_outputs = self.encoder(
+            inputs_embeds=hidden_states,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        last_hidden_state = encoder_outputs[0]
+        last_hidden_state = self.post_layernorm(last_hidden_state)
+
+        pooled_output = last_hidden_state[:, 0, :]
+        pooled_output = self.post_layernorm(pooled_output)
+
+        if not return_dict:
+            return (last_hidden_state, pooled_output) + encoder_outputs[1:]
+
+        return BaseModelOutputWithPooling(
+            last_hidden_state=last_hidden_state,
+            pooler_output=pooled_output,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+        )
+
+    def get_input_embeddings(self):
+        return self.embeddings
+
 
 class Blip2QFormerLayerOurs(Blip2QFormerLayer):
     def __init__(self, config, layer_idx):
@@ -273,8 +347,12 @@ class Blip2QFormerModelOurs(Blip2QFormerModel):
             cross_attentions=encoder_outputs.cross_attentions,
         )
 class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
-    def __init__(self, config):
+    def __init__(self, config, pool_size=None, prompt_pool=False):
         super().__init__(config)
+        self.vision_model = Blip2VisionModelOurs(
+            config.vision_config, 
+            pool_size=pool_size, 
+            prompt_pool=prompt_pool)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
     
     def forward(self,

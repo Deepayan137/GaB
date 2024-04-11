@@ -19,6 +19,9 @@ from utils import load_state_dict, LossMeter, set_global_logging_level
 import wandb
 from pprint import pformat
 
+from baselines.ewc import EWC
+from baselines.mas import MAS
+
 proj_dir = Path(__file__).resolve().parent.parent
 
 _use_native_amp = False
@@ -108,6 +111,14 @@ class TrainerBase(object):
             config=config,
             **kwargs
         )
+        if self.args.lambda_ewc > 0:
+            print(f'Using EWC regularization with lambda {self.args.lambda_ewc}')
+            ewc_module = EWC(ewc_lambda=1, decay_factor=0.99, uniform_importance=False)
+            return model, ewc_module
+        if self.args.lambda_mas > 0:
+            print(f'Using MAS regularization with lambda {self.args.lambda_mas}')
+            mas_module = MAS(lambda_reg=1, alpha=0.99)
+            return model, mas_module
         return model
 
     def create_tokenizer(self, **kwargs):
