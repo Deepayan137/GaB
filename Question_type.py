@@ -34,7 +34,7 @@ Category_splits = {'G1': [58, 48, 55, 36, 64, 1, 70, 73, 42, 15, 6, 18, 49, 59, 
 
 import json
 
-path = "/home/deepayan.das/projects/VQACL/"
+path = "../"
 # path = "/nfs/data_todi/ddas/projects/VQACL/"
 # path="/Users/deep/Projects/VQACL2/"
 with open(os.path.join(path, 'datasets/QuesId_task_map.json')) as fp:
