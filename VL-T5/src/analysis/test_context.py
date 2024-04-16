@@ -85,6 +85,7 @@ def gen_cap_loop():
 			img_dir = f"../datasets/COCO/{split}2014/"
 			img_path = os.path.join(img_dir, img_name)
 			cap = inference_cap(img_path)
+			import pdb;pdb.set_trace()
 			cap_dict[task].append((img_name, cap))
 	with open('test.json', 'w')	as f:
 		json.dump(cap_dict, f, indent=4)
@@ -98,8 +99,9 @@ if __name__ == "__main__":
 	question = "Who wears the jacket?"
 	sent = f"Question:{question} Answer:"
 	max_new_tokens = 20
-	pred_ans = inference_qa(image_path, sent, max_new_tokens)
-	print(pred_ans)
+	# pred_ans = inference_qa(image_path, sent, max_new_tokens)
+	# print(pred_ans)
+	gen_cap_loop()
 	import pdb;pdb.set_trace()
 	# context = [
  #   		("What is the image of?", "a bedroom"),

@@ -21,8 +21,10 @@ class SGVQA(Dataset):
 		super().__init__()
 		filename = f'fcl_mmf_{task}_{split}.npy'
 		data_path = os.path.join('/home/deepayan.das/projects/VQACL/datasets/npy', scenario, filename)
+		print(data_path)
 		self.data = np.load(data_path, allow_pickle=True)
-		# self.data = self.data[:100]
+		# self.data = self.data[:50]
+
 		self.args=args
 		if 'blip' in self.args.backbone:
 			self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
@@ -123,7 +125,6 @@ class SGVQA(Dataset):
 
 		if args.use_vision:
 			batch_entry['pixel_values'] = vis_feats
-
 		batch_entry['sent'] = sentences
 		batch_entry['question_ids'] = question_ids
 		batch_entry['answers'] = answers

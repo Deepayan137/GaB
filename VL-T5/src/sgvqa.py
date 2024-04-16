@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import random
+import wandb
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -100,7 +101,7 @@ class Trainer(TrainerBase):
 		self.Examplar_set = {}
 	
 	def _load_checkpoint(self, checkpoint_name, latest_task_idx):
-		checkpoint_model = f'{self.args.output}/{checkpoint_name}_LAST'
+		checkpoint_model = f'{self.args.output}/{checkpoint_name}_BEST'
 		for idx, task in enumerate(self.task_list):
 			if idx <= latest_task_idx:
 				self.task_iftrain[task] = 1
@@ -114,10 +115,16 @@ class Trainer(TrainerBase):
 			from vqa_data_memory import get_loader, get_loader_test, get_loader_memory
 		latest_task_idx = -1
 		if load:
-			latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-			latest_task_idx = self.task_list.index(latest_task)
-			self._load_checkpoint(latest_task, latest_task_idx)
-		
+			# latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
+			# latest_task_idx = self.task_list.index(latest_task)
+			self.load(self.args.checkpoint)
+			# self._load_checkpoint(latest_task, latest_task_idx)
+		run = wandb.init(
+		    # Set the project where this run will be logged
+		    project="scenevqa_15",
+		    # Track hyperparameters and run metadata
+		    config=vars(args)
+		)
 		task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
 		id2task = {v:k for k, v in task2id.items()}
 		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -136,7 +143,7 @@ class Trainer(TrainerBase):
 			self.task_iftrain[task] = 1
 			# Memory
 			if args.memory:
-				if task_idx >0:
+				if task_idx > 0:
 					each_memory = int(self.M / task_idx)
 					data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{self.task_list[task_idx - 1]}_train.npy')
 					data_info_dicts = np.load(data_info_path, allow_pickle=True)
@@ -157,10 +164,14 @@ class Trainer(TrainerBase):
 			# Load the data
 			print("#Loading ", task)
 			print(f'Building train loader at GPU {args.gpu}')
+			if task != "scenetext":
+				batch_size = args.batch_size
+			else:
+				batch_size = 1
 			train_loader, total_num_Q = get_loader(
 				args,
 				split=args.train, scenario=args.scenario, 
-				batch_size=args.batch_size,
+				batch_size=batch_size,
 				workers=args.num_workers,
 				task=task,
 			)
@@ -216,7 +227,7 @@ class Trainer(TrainerBase):
 			# score_dict = self.evaluate(self.val_loader_cate, task)
 			valid_score_raw_best = 0.0
 			patience_counter = 0
-			patience = 2
+			patience = 5
 			for epoch in range(start_epoch, self.args.epochs):
 				if self.start_epoch is not None:
 					epoch += self.start_epoch
@@ -261,6 +272,9 @@ class Trainer(TrainerBase):
 				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
 				score_dict = self.evaluate(self.val_loader, task)
 				valid_score_raw = score_dict['overall']
+				wandb.log({
+					f"val_accuracy_{task}": valid_score_raw, 
+					f"train_loss_{task}": loss_meter.val})
 				log_str = ''
 				log_str += "\nValid Raw %0.2f" % (valid_score_raw)
 				print(log_str)
@@ -312,7 +326,6 @@ class Trainer(TrainerBase):
 		return results, lr
 
 	def Test(self, load=False):
-
 		for task_idx, task in enumerate(self.task_list):
 			print('======================== Now is task "', task, '" ========================')
 			if 'blip' in self.args.backbone:
@@ -321,7 +334,7 @@ class Trainer(TrainerBase):
 				args,
 				split=args.test, 
 				scenario=args.scenario, batch_size=args.valid_batch_size,
-				workers=4,
+				workers=args.num_workers,
 				task=task,
 			)
 			self.test_loader_dict_all[task] = test_loader
