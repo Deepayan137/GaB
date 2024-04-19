@@ -1,5 +1,6 @@
 import json
 import random
+import spacy
 import torch
 import torch.nn as nn
 from transformers import T5Config, BartConfig, Blip2Config
@@ -19,6 +20,9 @@ from Question_type import All_task, Category_splits
 import os
 
 from src.param import parse_args
+
+nlp = spacy.load("en_core_web_sm")
+
 args = parse_args()
 processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 device = 'cuda'
@@ -51,61 +55,103 @@ def inference_qa(image_path, question, max_new_tokens=2):
 	pixel_values = inputs["pixel_values"].to(device)
 	input_ids = inputs["input_ids"].to(device)
 	# target_ids = target_ids.to(device)
-	output = model.generate(**inputs, max_new_tokens=20
-	    # max_new_tokens=max_new_tokens,repetition_penalty=1, num_beams=5, length_penalty=-1
-	    )
+	output = model.generate(**inputs, max_new_tokens=50, num_beams=5, num_return_sequences=3)
+	
 	pred_ans =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 	return pred_ans
 
-def inference_cap(image_path, prompt=None, max_new_tokens=20):
-	image = Image.open(image_path).convert("RGB")
-	if not prompt:
-		inputs = processor(image, return_tensors="pt").to(device)
-	else:
-		inputs = processor(image, text=prompt, return_tensors="pt").to(device)
-	generated_ids = model.generate(**inputs, max_new_tokens=20)
-	generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
-	return generated_text
+def inference_cap(images, prompts=None, temp=0.7):
+	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True, max_length=20).to(device)
+	generated_ids = model.generate(**inputs, max_new_tokens=50, num_beams=5, temperature=temp, do_sample=True)
+	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+	if prompts:
+		empty_indices = [index for index, cap in enumerate(captions) if cap.strip() == ""]
+		prompts = [prompt for index, prompt in enumerate(prompts) if index not in empty_indices]
+		captions = [cap for index, cap in enumerate(captions) if index not in empty_indices]
+		captions = [f"{prompt} {cap.strip()}" for prompt, cap in zip(prompts, captions)]
+		return captions
+	return captions[0].strip()
 
+
+
+spec_prompt_sing = ["the {noun} in the image is", "the {noun} in the image is doing", "the {noun} in the image is wearing a", "the {noun} in the image seems"]
+spec_prompt_mult = ["the {noun} in the image is", "the {noun} in the image are doing", "the {noun} in the image are wearing", "the {noun} in the image seem"]
+
+def generate_prompts(features):
+	prompts = ["the image is of", "the image is set in", "the image is taken during", "the main object in the image is", "on the background is", "on the foreground is"]
+	for noun, number in features['nouns']:
+		if noun in ['man', 'woman', 'father', 'daughter','boy', 'girl', 'men', 'women', 'persons', 'person', 'people', 'child', 'baby', 'animal', 'dog', 'cat','animals']:
+			if number == 'plural':
+				for prompt in spec_prompt_mult:
+					prompts.append(prompt.format(noun=noun))
+			else:
+				for prompt in spec_prompt_sing:
+					prompts.append(prompt.format(noun=noun))
+	return prompts
+
+def extract_features(sentence):
+	doc = nlp(sentence)
+	features = {
+        'nouns': [],
+        # 'adjectives': [],
+        # 'verbs': []
+    }
+	for token in doc:
+		if token.pos_ == "NOUN":
+			number = "plural" if token.tag_ == "NNS" else "singular"
+			features["nouns"].append((token.text, number))
+		# elif token.pos_ == 'ADJ':
+		# 	features['adjectives'].append(token.text)
+		# elif token.pos_ == 'VERB':
+		# 	features['verbs'].append(token.text)
+	return features
+				
 def gen_cap_loop():
 	cap_dict = {}
-	for task in tqdm(All_task):
-		path = f"../datasets/vqa/Partition_Q_V2/karpathy_train_{task}.json"
-		
-		f = open(path, 'r')
-		data = json.load(f)
-		subset = random.sample(data, 10)
-		cap_dict[task] = []
-		for item in subset:
-			img_name = item['img_id']+'.jpg'
-			if 'train2014' in img_name:
-				split="train"
-			else:
-				split = 'val'
-			img_dir = f"../datasets/COCO/{split}2014/"
-			img_path = os.path.join(img_dir, img_name)
-			cap = inference_cap(img_path)
-			import pdb;pdb.set_trace()
-			cap_dict[task].append((img_name, cap))
-	with open('test.json', 'w')	as f:
-		json.dump(cap_dict, f, indent=4)
+	for i, task in (enumerate(All_task)):
+		if i > 0:
+			num = 5000//i
+			print(f"Now is task {All_task[i]} and number of samples is {num}")
+			path = os.path.join("../datasets/vqa/Partition_Q_V2", f"karpathy_train_{All_task[i]}.json")
+			with open(path, 'r') as f:
+				data = json.load(f)
+			subset = random.sample(data, num)
+			
+			cap_dict = {}
+
+			for item in tqdm(subset):
+				img_name = f"{item['img_id']}.jpg"
+				split = "train" if 'train2014' in img_name else 'val'
+				img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
+				initial_caption = inference_cap(img_path, temp=2.5)
+				cap_dict[img_name] = {}
+				cap_dict[img_name]["captions"] = [initial_caption]
+				features = extract_features(initial_caption)
+				prompts = generate_prompts(features)
+				import pdb;pdb.set_trace()
+				for prompt in prompts:
+					cap = inference_cap(img_path, prompt)
+					cap_dict[img_name]["captions"].extend(cap)
+			
+			with open(f'../datasets/vqa/captions/{task}.json', 'w') as f:
+				json.dump(cap_dict, f, indent=4)
 if __name__ == "__main__":
-	# gen_cap_loop()
+	
+	gen_cap_loop()
 	# data_dir = "/nfs/data_todi/datasets/COCO2014/val2014"
 	# data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO/val2014/"
-	data_dir = '/home/deepayan.das/projects/SG-CLVQA/datasets/gvqa//'
-	image_name = "2343078.jpg"
-	image_path = os.path.join(data_dir, image_name)
-	question = "Who wears the jacket?"
-	sent = f"Question:{question} Answer:"
-	max_new_tokens = 20
+	# data_dir = '/home/deepayan.das/projects/SG-CLVQA/datasets/gvqa//'
+	# image_name = "2343078.jpg"
+	# image_path = os.path.join(data_dir, image_name)
+	# question = "Who wears the jacket?"
+	# sent = f"Question:{question} Answer:"
+	# max_new_tokens = 20
 	# pred_ans = inference_qa(image_path, sent, max_new_tokens)
 	# print(pred_ans)
-	gen_cap_loop()
-	import pdb;pdb.set_trace()
+	
 	# context = [
- #   		("What is the image of?", "a bedroom"),
- #   		("Are there frames on the wall?", "Yes"),
+	#   		("What is the image of?", "a bedroom"),
+	#   		("Are there frames on the wall?", "Yes"),
 	# ]
 	# question = "what number of frames are on the wall?"
 	# template = "Question: {} Answer: {}."

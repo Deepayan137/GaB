@@ -115,8 +115,8 @@ class Trainer(TrainerBase):
 			from vqa_data_memory import get_loader, get_loader_test, get_loader_memory
 		latest_task_idx = -1
 		if load:
-			# latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-			# latest_task_idx = self.task_list.index(latest_task)
+			latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:1])
+			latest_task_idx = self.task_list.index(latest_task)
 			self.load(self.args.checkpoint)
 			# self._load_checkpoint(latest_task, latest_task_idx)
 		run = wandb.init(
@@ -145,11 +145,13 @@ class Trainer(TrainerBase):
 			if args.memory:
 				if task_idx > 0:
 					each_memory = int(self.M / task_idx)
-					data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{self.task_list[task_idx - 1]}_train.npy')
-					data_info_dicts = np.load(data_info_path, allow_pickle=True)
-
-					random.shuffle(data_info_dicts)  # shuffle
-					self.Examplar_set[task] = data_info_dicts[:each_memory]
+					for t in range(task_idx):
+						tsk = self.task_list[t]
+						if t not in self.Examplar_set.keys():
+							data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{tsk}_train.npy')
+							data_info_dicts = np.load(data_info_path, allow_pickle=True)
+							random.shuffle(data_info_dicts)  # shuffle
+							self.Examplar_set[tsk] = data_info_dicts[:each_memory]
 					All_examplar = []
 					for task_set in self.Examplar_set:
 						All_examplar.extend(self.Examplar_set[task_set][:each_memory])

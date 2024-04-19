@@ -80,6 +80,9 @@ class BLIP2VQA(Blip2VQACL):
 
         return result
 
+# 
+
+
 
 # class NaiveInstructBLIP2(InstructBlipForConditionalGeneration):
 #     def __init__(self, config, num_answers=None, label2ans=None, ft_layers='query_tokens'):

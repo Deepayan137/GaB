@@ -18,7 +18,7 @@ All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count',
 Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory']
 Sg_task = {
     "function":{
-        "oarlks":["scenetext"],
+        "oarlks":["object", "attribute", "relation", "logical", "knowledge", "scenetext"],
     }
 }
 # Comp_task = ['q_subcategory'] [object  attribute   relation    logic   knowledge   scene text

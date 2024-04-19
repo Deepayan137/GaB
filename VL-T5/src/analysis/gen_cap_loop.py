@@ -14,11 +14,13 @@ if __name__ == "__main__":
 		f = open(path, 'r')
 		data = json.load(f)
 		subset = random.sample(data, 10)
-		cap_dict[task] = []
+		cap_dict[task] = {}
 		for item in subset:
 			img_name = subset['img_id']
+			cap_dict[task][img_name] = []
 			img_path = os.path.join(img_dir, img_name)
 			cap = inference_cap(img_path, "Describe this image")
+			
 			cap_dict[task].append((img_name, cap))
 	with open('test.json', 'w')	as f:
 		json.dump(cap_dict, f)
