@@ -166,11 +166,13 @@ class VQAFineTuneDataset(Dataset):
                 sent = datum['sent']
             elif 'question' in datum:
                 sent = datum['question']
-            sent = f"Question: {sent.lower()} Answer:"
-            inputs = self.processor(image, text=sent, max_length=20, 
-                truncation=True, return_tensors="pt")
+            
+            # sent = f"Question: {sent.lower()} Answer:"
+            # sent = f"{sent.lower()} {datum['label']}"
+            # inputs = self.processor(image, text=sent, max_length=20, 
+                # truncation=True, return_tensors="pt")
 
-            out_dict['pixel_values'] = inputs['pixel_values']
+            # out_dict['pixel_values'] = inputs['pixel_values']
 
 
 
@@ -180,9 +182,9 @@ class VQAFineTuneDataset(Dataset):
         out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
 
         out_dict['img_id'] = img_id
-        out_dict['sent'] = sent
-        out_dict['input_ids'] = inputs["input_ids"]
-        out_dict['input_length'] = len(inputs["input_ids"][0])
+        # out_dict['sent'] = sent
+        # out_dict['input_ids'] = inputs["input_ids"]
+        # out_dict['input_length'] = len(inputs["input_ids"][0])
 
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
@@ -241,8 +243,20 @@ class VQAFineTuneDataset(Dataset):
                 eos_token_id = [2]
                 target_ids = self.processor.tokenizer.encode(answer, 
                     max_length=10, truncation=True)
+
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
+
+                # question answer structuring
+                sent = f"{sent.lower()} {answer}"
+                inputs = self.processor(image, text=sent, max_length=20, 
+                    truncation=True, return_tensors="pt")
+
+                out_dict['pixel_values'] = inputs['pixel_values']
+                out_dict['sent'] = sent
+                out_dict['input_ids'] = inputs["input_ids"]
+                out_dict['input_length'] = len(inputs["input_ids"][0])
+                
 
         return out_dict
 

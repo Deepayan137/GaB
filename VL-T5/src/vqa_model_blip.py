@@ -511,11 +511,14 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         #         for param in layer.parameters():
         #             param.requires_grad = False
 
-        self.query_tokens.requires_grad = True
-        print("freeze vision encoder")
+        # self.query_tokens.requires_grad = True
+        # print("freeze vision encoder")
         
         for name, param in self.language_model.named_parameters():
             param.requires_grad = False
+
+        print("Freezing language model but lm_head") 
+        self.language_model.lm_head.requires_grad_(True)
         # self.eos_token_id = self.processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
     
     def get_patch_embeddings(self, x):
@@ -531,37 +534,82 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
         input_ids = batch['input_ids'].to(device) # bs, 20
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        batch_size = pixel_values.shape[0]
         
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+
         # cate_labels = batch['cate_labels'].to(device)
         # ques_labels = batch['ques_labels'].to(device)
-        max_new_tokens = 2
-        if task in ['q_recognition', 'q_type']:
-            max_new_tokens = 3
-        output = self.generate(input_ids=input_ids,
-            pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            repetition_penalty=1.2)
+
+        # qa pairs generation
+        # qa_pairs = torch.cat([input_ids, lm_labels], dim=1) ## gt (q,a) pairs as labels
+        # prompt = f'Generate question answer pairs on task {task}'
+        # input_ids = self.processor(None, text=prompt, return_tensors="pt", padding=True, truncation=True, max_length=12)['input_ids'].repeat(batch_size, 1).to(device)
+        # max_new_tokens = 25
+        # max_new_tokens = 2
+        # if task in ['q_recognition', 'q_type']:
+            # max_new_tokens = 3
+        # output = self.generate(pixel_values=pixel_values, max_length=25, do_sample=True, num_beams=25, temperature=2.0, num_return_sequences=5, top_p=5)
+        output = self.generate(
+                        pixel_values=pixel_values, 
+                        max_length=25, 
+                        do_sample=False, 
+                        num_beams=27, 
+                        num_return_sequences=3, 
+                        diversity_penalty=0.5, 
+                        num_beam_groups=9)
+        # output = self.generate(input_ids=input_ids,
+            # pixel_values=pixel_values,
+            # max_new_tokens=10,
+            # num_beams=5,
+            # temperature=0.7,
+            # repetition_penalty=2.5, 
+            # do_sample=True)
         result = {}
         result['token_ids'] = output
-        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
+        
+        # decoded_prompt = self.processor.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+        # print("prompt", decoded_prompt[:3])
+        result['pred_ans'] = self.processor.batch_decode(output, 
+                                    skip_special_tokens=True, 
+                                    )
+        # qa_pairs = self.processor.tokenizer.batch_decode(qa_pairs, skip_special_tokens=True)
+        # print("qa_pair", qa_pairs[:3])
+        print("pred_answer: ", result['pred_ans'][:5])
         return result
 
-    def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False, embeddings=None):
+    def train_step(self, batch, current_task_id, proto_alpha, proto_beta, mem_num_Q = 0, total_num_Q = 1000, memory=False, embeddings=None, **kwargs):
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
         input_ids = batch['input_ids'].to(device) # bs, 20
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        batch_size = pixel_values.shape[0]
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
+        
+        # qa pairs generation
+        # qa_pairs = torch.cat([input_ids, lm_labels], dim=1) ## gt (q,a) pairs as labels
+        # task = kwargs['task']
+        # prompt = [f"Task {task}:" for _ in range(batch_size)]
+        # prompt_ids = self.processor(text=prompt, 
+                                    # max_length=5, 
+                                    # padding=True, 
+                                    # truncation=True, 
+                                    # return_tensors="pt")['input_ids'].to(device)
+
+        # target_ids = self.processor(text=sent, 
+                                    # max_length=25, 
+                                    # truncation=True, 
+                                    # padding=True, 
+                                    # return_tensors="pt")['input_ids']
+
         output = self(input_ids=input_ids,
             pixel_values=pixel_values,
-            attention_mask=attention_mask,
-            labels=lm_labels,
-            embeddings=embeddings
+            labels=input_ids,
             )
+        
+
         assert 'loss' in output
-        B, L = lm_labels.size()
+        B, L = input_ids.size()
         loss = output['loss'] # 400 (bs*5)
         result = {
             'loss': loss
