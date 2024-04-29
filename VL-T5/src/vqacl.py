@@ -4,6 +4,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import os
+import wandb
 import collections
 from pathlib import Path
 from packaging import version
@@ -21,11 +22,14 @@ from param import parse_args
 from vqa_data_memory import get_loader, get_loader_test, VQADataset, get_loader_memory
 from utils import load_state_dict, LossMeter, set_global_logging_level
 import dist_utils
+from data_utils import get_memory_data
 import json
 import random
 import os
 
 import signal
+
+os.environ['WANDB_MODE'] = 'offline'
 
 def __handle_signal(signum, frame):
     raise TerminationError()
@@ -147,7 +151,7 @@ class Trainer(TrainerBase):
         if args.use_class_hierarchy:
             self.Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
         else:
-            self.Examplar_set = []
+            self.Examplar_set = {}
 
         self.composition_test_cate = args.comp_cate
 
@@ -169,7 +173,12 @@ class Trainer(TrainerBase):
             latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
             latest_task_idx = self.task_list.index(latest_task)
             self._load_checkpoint(latest_task, latest_task_idx)
-        
+        run = wandb.init(
+            # Set the project where this run will be logged
+            project="vqacl",
+            # Track hyperparameters and run metadata
+            config=vars(args)
+        )
         task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
         id2task = {v:k for k, v in task2id.items()}
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -191,38 +200,7 @@ class Trainer(TrainerBase):
                 if args.memory:
                     if task_idx >0:
                         each_memory = int(self.M / task_idx)
-
-                        data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{self.task_list[task_idx - 1]}.json')
-                        with open(data_info_path) as f:
-                            data_info_dicts = json.load(f)
-
-                        random.shuffle(data_info_dicts)  # shuffle
-                        if args.use_class_hierarchy:
-                            each_memory_for_cate = int(each_memory / len(Category_splits))
-                            for cate in Category_splits:
-                                num = 0
-                                self.Examplar_set[cate].append([])
-                                for _d in data_info_dicts:
-                                    img_id = _d['img_id']
-                                    if img_id in ImgId_cate_map:
-                                        if ImgId_cate_map[img_id] in Category_splits[cate]:
-                                            self.Examplar_set[cate][task_idx - 1].append(_d)
-                                            num += 1
-                                            if num >= each_memory_for_cate:
-                                                break
-
-                            print('Load from Partition_Q_v3......')
-                            for cate in Category_splits:
-                                for i in range(task_idx):
-                                    self.Examplar_set[cate][i] = self.Examplar_set[cate][i][: each_memory_for_cate]
-
-                            All_examplar = []
-                            for E_set in self.Examplar_set:
-                                for task_set in self.Examplar_set[E_set]:
-                                    All_examplar += task_set
-                        else:
-                            All_examplar = data_info_dicts[:each_memory]
-                        # assert len(All_examplar) == M
+                        All_examplar, self.Examplar_set = get_memory_data(args, task_idx, each_memory, self.Examplar_set)
                         print("# The size of the cate Memory:", len(All_examplar))
                     else:
                         All_examplar = []
@@ -230,7 +208,6 @@ class Trainer(TrainerBase):
                 else:
                     All_examplar = []
                     each_memory = 0
-                import pdb;pdb.set_trace()
                 # Load the data
                 print("#Loading ", task)
                 print(f'Building train loader at GPU {args.gpu}')
@@ -281,6 +258,7 @@ class Trainer(TrainerBase):
                 self.test_loader_dict_all[task] = test_loader
 
                 print("#Loading ", task)
+                
                 memory_loader = get_loader_memory(
                     args,
                     self.coco_Ours,
@@ -410,22 +388,21 @@ class Trainer(TrainerBase):
                             valid_score_raw = score_dict['overall']
                             log_str = ''
                             log_str += "\nGroup %s Epoch %d: Valid Raw %0.2f Topk %0.2f" % (cateGroup, epoch, valid_score_raw, valid_score)
-
+                            wandb.log({f"val_accuracy_{task}": valid_score_raw, 
+                                    f"train_loss_{task}": loss_meter.val})
                         if valid_score_raw > valid_score_raw_best:
                             valid_score_raw_best = valid_score_raw
                             patience_counter = 0  # Reset the patience counter
-                            # print("Saving Best")
-                            # self.save(task + "_BEST")
                         else:
                             patience_counter += 1  # Increment the patience counter
                             print(f"No improvement for {patience_counter} epochs.")
                         
 
-                        if patience_counter > patience:
-                            print("Early stopping triggered.")
-                            print("Saving Last")
-                            self.save(task + "_LAST")
-                            break  # Break out of the training loop
+                        # if patience_counter > patience:
+                        #     print("Early stopping triggered.")
+                        #     print("Saving Last")
+                        #     self.save(task + "_LAST")
+                        #     break  # Break out of the training loop
                         if self.args.distributed:
                             dist.barrier()
                 if self.regularizer is not None:
@@ -449,8 +426,8 @@ class Trainer(TrainerBase):
             if self.args.distributed:
                 results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
             else:
-                results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
-
+                results = self.model.train_step(batch, task_idx)
+        #, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num
         loss = results['loss']
         lambda_Q = self.args.lambda_Q
         lambda_V = self.args.lambda_V
@@ -549,13 +526,13 @@ class Trainer(TrainerBase):
                 if os.path.exists(last_path+'.pth') and not self.args.now_train:
                     self.load(last_path)
                     task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
-                    # task = self.task_list[0]
+                    # task = self.task_list[1]
                 self.test(task)
             else:
                 task = self.task_list[-1]
                 last_path = os.path.join(self.args.output, f'{task}_LAST')
                 # self.load(last_path)
-                self.test(task)
+                self.test_single(task)
         else:
             self.test(train_task)
 
@@ -613,9 +590,6 @@ class Trainer(TrainerBase):
         for test_task in self.coco_Ours:
             mega_log_dict[task][test_task] = []
             predict_gt_dict[task][test_task] = []
-            # if self.args.now_train:
-            #     if self.task_iftrain[test_task] == 0:
-            #         flag = 0
             if flag == 1:
                 self.test_loader = self.test_loader_dict_all[test_task]
                 print(' ===== Test for the task "' + test_task + '"  ======')

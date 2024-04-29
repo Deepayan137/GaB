@@ -96,8 +96,6 @@ class BLIP2Prototype(Blip2VQACL):
         return result
 
 
-
-
 class NaiveBLIP2(NaiveBlip2VQACL):
     def __init__(self, config, 
         num_answers=None, 
@@ -205,129 +203,130 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         return result
 
 
-if __name__ == "__main__":
-    import torch
-    import torch.nn as nn
-    from transformers import T5Config, BartConfig, Blip2Config
-    from torch.utils.data import DataLoader, Dataset
-    from src.vqa_data_blip import VQADataset, VQAFineTuneDataset, FilteredVQAFineTuneDataset
-    from src.param import parse_args
-    # from src.vqacl import Trainer
-    import sys
-    from tqdm import *
-    from Question_type import All_task, Category_splits
-    import os
-    backbone = "Salesforce/blip2-opt-2.7b"
-    config = Blip2Config.from_pretrained(backbone)
-    processor = AutoProcessor.from_pretrained(backbone)
-    # model = Blip2ForConditionalGeneration.from_pretrained(backbone, config=config)
-    model = BLIP2Prototype.from_pretrained(backbone, config=config)
-    task = 'q_recognition'
-    save_path = f'snap/test/{task}_LAST.pth'
-    device = 'cuda'
-    model = model.to(device)
-    # if os.path.exists(save_path):
-    #     print(f'Loading model at {save_path}')
-    #     ckpt = torch.load(save_path)
-    #     model.load_state_dict(ckpt)
-    split = 'train'
-    coco_Ours = All_task
-    train_dset = VQADataset(f"karpathy_{split}", True)
-    val_dset = VQADataset(f"karpathy_val", True)
-    args = parse_args()
-    args.backbone = backbone
+# if __name__ == "__main__":
+#     import torch
+#     import torch.nn as nn
+#     from transformers import T5Config, BartConfig, Blip2Config
+#     from torch.utils.data import DataLoader, Dataset
+#     from src.vqa_data_blip import VQADataset, VQAFineTuneDataset, FilteredVQAFineTuneDataset
+#     from src.param import parse_args
+#     # from src.vqacl import Trainer
+#     import sys
+#     from tqdm import *
+#     from Question_type import All_task, Category_splits
+#     import os
+#     backbone = "Salesforce/blip2-opt-2.7b"
+#     config = Blip2Config.from_pretrained(backbone)
+#     processor = AutoProcessor.from_pretrained(backbone)
+#     # model = Blip2ForConditionalGeneration.from_pretrained(backbone, config=config)
+#     model = BLIP2Prototype.from_pretrained(backbone, config=config)
+#     task = 'q_recognition'
+#     save_path = f'snap/test/{task}_LAST.pth'
+#     device = 'cuda'
+#     model = model.to(device)
+#     # if os.path.exists(save_path):
+#     #     print(f'Loading model at {save_path}')
+#     #     ckpt = torch.load(save_path)
+#     #     model.load_state_dict(ckpt)
+#     split = 'train'
+#     coco_Ours = All_task
+#     train_dset = VQADataset(f"karpathy_{split}", True)
+#     val_dset = VQADataset(f"karpathy_val", True)
+#     args = parse_args()
+#     args.backbone = backbone
 
-    dataset = VQAFineTuneDataset(
-                coco_Ours,
-                [],
-                'karpathy_train',
-                raw_dataset=train_dset,
-                rank=0,
-                topk=-1,
-                verbose=True,
-                args=args,
-                mode='train',
-                task=task,
-                cates=Category_splits['G1']
-            )
-    train_loader_cate = DataLoader(
-                dataset, batch_size=5, shuffle=True,
-                num_workers=0, pin_memory=True, sampler=None,
-                collate_fn=dataset.collate_fn)
-    dataset = VQAFineTuneDataset(
-                coco_Ours,
-                [],
-                f'karpathy_test',
-                raw_dataset=val_dset,
-                rank=0,
-                topk=-1,
-                verbose=True,
-                args=args,
-                mode='val',
-                task=task,
-                cates=[i for i in range(80)]
-            )
-    val_loader_cate =  DataLoader(
-                dataset, batch_size=2, shuffle=False,
-                num_workers=0, pin_memory=True, sampler=None,
-                collate_fn=dataset.collate_fn, drop_last=False)
-    epoch_results = {
-                        'loss': 0.,
-                    }
-    eos_token_id = processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.05)
-    num_epochs = 1
-    # trainer = Trainer(args, All_task)
-    def preprocess(text):
-        # Convert to lowercase, strip whitespace, remove punctuation, etc.
-        text = text.lower().strip()
-        return text
+#     dataset = VQAFineTuneDataset(
+#                 coco_Ours,
+#                 [],
+#                 'karpathy_train',
+#                 raw_dataset=train_dset,
+#                 rank=0,
+#                 topk=-1,
+#                 verbose=True,
+#                 args=args,
+#                 mode='train',
+#                 task=task,
+#                 cates=Category_splits['G1']
+#             )
+#     train_loader_cate = DataLoader(
+#                 dataset, batch_size=5, shuffle=True,
+#                 num_workers=0, pin_memory=True, sampler=None,
+#                 collate_fn=dataset.collate_fn)
+#     dataset = VQAFineTuneDataset(
+#                 coco_Ours,
+#                 [],
+#                 f'karpathy_test',
+#                 raw_dataset=val_dset,
+#                 rank=0,
+#                 topk=-1,
+#                 verbose=True,
+#                 args=args,
+#                 mode='val',
+#                 task=task,
+#                 cates=[i for i in range(80)]
+#             )
+#     val_loader_cate =  DataLoader(
+#                 dataset, batch_size=2, shuffle=False,
+#                 num_workers=0, pin_memory=True, sampler=None,
+#                 collate_fn=dataset.collate_fn, drop_last=False)
+#     epoch_results = {
+#                         'loss': 0.,
+#                     }
+#     eos_token_id = processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
+#     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.05)
+#     num_epochs = 1
+#     # trainer = Trainer(args, All_task)
+#     def preprocess(text):
+#         # Convert to lowercase, strip whitespace, remove punctuation, etc.
+#         text = text.lower().strip()
+#         return text
     
-    def evaluate(predictions, truths):
-        total = len(predictions)
-        correct = 0
+#     def evaluate(predictions, truths):
+#         total = len(predictions)
+#         correct = 0
 
-        for pred, truth in zip(predictions, truths):
-            if preprocess(pred) in preprocess(truth) or preprocess(truth) in preprocess(pred):
-                correct += 1
-        accuracy = correct / total
-        return accuracy
+#         for pred, truth in zip(predictions, truths):
+#             if preprocess(pred) in preprocess(truth) or preprocess(truth) in preprocess(pred):
+#                 correct += 1
+#         accuracy = correct / total
+#         return accuracy
 
-    def validation(model, loader):
-        # preds = []
-        # truths = []
-        # print("Validating")
-        # for batch in tqdm(loader):
-        #     pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        #     input_ids = batch['input_ids'].to(device) # bs, 20
-        #     lm_labels = batch["target_ids"].to(device)
-        #     attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
-        #     output = model.generate(input_ids=input_ids,
-        #         pixel_values=pixel_values,
-        #         attention_mask=attention_mask, max_new_tokens=20)
-        #     out_text = processor.tokenizer.batch_decode(output, skip_special_tokens=True)
-        #     preds.append(out_text[0])
-        #     truths.append(batch['answers'][0])
-        acc = trainer.evaluate(loader)
-        print(f"Accuracy:{acc}")
+#     def validation(model, loader):
+#         # preds = []
+#         # truths = []
+#         # print("Validating")
+#         # for batch in tqdm(loader):
+#         #     pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+#         #     input_ids = batch['input_ids'].to(device) # bs, 20
+#         #     lm_labels = batch["target_ids"].to(device)
+#         #     attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
+#         #     output = model.generate(input_ids=input_ids,
+#         #         pixel_values=pixel_values,
+#         #         attention_mask=attention_mask, max_new_tokens=20)
+#         #     out_text = processor.tokenizer.batch_decode(output, skip_special_tokens=True)
+#         #     preds.append(out_text[0])
+#         #     truths.append(batch['answers'][0])
+#         acc = trainer.evaluate(loader)
+#         print(f"Accuracy:{acc}")
     
-    # validation(model, val_loader_cate)
-    print("Training starts:")
-    for epoch in range(num_epochs):
-        with tqdm(total=len(train_loader_cate), desc=f'Epoch {epoch + 1}/{num_epochs}', unit='batch') as pbar:
-            for batch in tqdm(train_loader_cate):
-                # pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-                # input_ids = batch['input_ids'].to(device) # bs, 20
-                # lm_labels = batch["target_ids"].to(device)
-                # attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
-                # output = model.train_step(batch, 0, args.proto_alpha, args.proto_beta)
-                output = model.test_step(batch, 0)
-                loss = output["loss"]
-                loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
-                pbar.set_description(f'Epoch {epoch + 1}/{num_epochs} Loss: {loss:.4f}')
-                pbar.update(1)
-            validation(model, val_loader_cate)
-    torch.save(model.state_dict(), os.path.join('snap/test/q_location.pth'))
+#     # validation(model, val_loader_cate)
+#     print("Training starts:")
+#     # for epoch in range(num_epochs):
+#     # for task in All_task[1:]:
+#     #     with tqdm(total=len(train_loader_cate), desc=f'Epoch {epoch + 1}/{num_epochs}', unit='batch') as pbar:
+#     #         for batch in tqdm(train_loader_cate):
+#                 # pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+#                 # input_ids = batch['input_ids'].to(device) # bs, 20
+#                 # lm_labels = batch["target_ids"].to(device)
+#                 # attention_mask = (input_ids != processor.tokenizer.pad_token_id).long().to(device)
+#                 # output = model.train_step(batch, 0, args.proto_alpha, args.proto_beta)
+#     #             output = model.test_step(batch, 0)
+#     #             loss = output["loss"]
+#     #             loss.backward()
+#     #             optimizer.step()
+#     #             optimizer.zero_grad()
+#     #             pbar.set_description(f'Epoch {epoch + 1}/{num_epochs} Loss: {loss:.4f}')
+#     #             pbar.update(1)
+#     #         validation(model, val_loader_cate)
+#     # torch.save(model.state_dict(), os.path.join('snap/test/q_location.pth'))
 

@@ -207,6 +207,7 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--prompt_pool', default=False, type=str2bool)
     parser.add_argument('--pool_size', default=None, type=int)
     parser.add_argument('--scenario', default='function', type=str)
+    parser.add_argument('--use_gen_data', default=False, type=str)
     # Parse the arguments.
     if parse:
         args = parser.parse_args()

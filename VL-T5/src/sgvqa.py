@@ -147,7 +147,7 @@ class Trainer(TrainerBase):
 					each_memory = int(self.M / task_idx)
 					for t in range(task_idx):
 						tsk = self.task_list[t]
-						if t not in self.Examplar_set.keys():
+						if tsk not in self.Examplar_set.keys():
 							data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{tsk}_train.npy')
 							data_info_dicts = np.load(data_info_path, allow_pickle=True)
 							random.shuffle(data_info_dicts)  # shuffle

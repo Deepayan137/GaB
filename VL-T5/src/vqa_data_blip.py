@@ -118,7 +118,7 @@ class VQAFineTuneDataset(Dataset):
                 else:
                     print("No class hierarchy")
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "../datasets/COCO"
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.instruction = Instructions[task]
         self.task = task
@@ -132,6 +132,8 @@ class VQAFineTuneDataset(Dataset):
 
             'train2014': os.path.join(data_dir, f'train2014'),
             'val2014': os.path.join(data_dir, f'val2014'),
+            'train2014_feat': os.path.join(data_dir, f'train2014_feat'),
+            'val2014_feat': os.path.join(data_dir, f'val2014_feat'),
         }
 
 
@@ -148,6 +150,7 @@ class VQAFineTuneDataset(Dataset):
         ###### Image ######
         if self.args.use_vision:
             img_id = datum['img_id']
+            split = img_id.split('_')[1]
             out_dict['img_id'] = img_id
             if self.args.use_class_hierarchy:
                 out_dict['img_cate'] = ImgId_cate_map[img_id]
@@ -172,6 +175,9 @@ class VQAFineTuneDataset(Dataset):
             inputs = self.processor(image, text=sent, max_length=max_length, 
                 truncation=True, return_tensors="pt")
             out_dict['pixel_values'] = inputs['pixel_values']
+            feat_path = self.source_dir[f'{split}_feat'], img_id +'.pth'
+            if os.path.exists(feat_path):
+                features = torch.load(feat_path)
 
 
 
@@ -245,7 +251,7 @@ class VQAFineTuneDataset(Dataset):
                     max_length=10, truncation=True)
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
-
+                out_dict['features'] = features
         return out_dict
 
 
@@ -285,6 +291,7 @@ class VQAFineTuneDataset(Dataset):
 
         cate_labels = []
         ques_labels = []
+        features = []
         for i, entry in enumerate(batch):
             input_ids[i, :entry['input_length']] = entry['input_ids'][0]
             if 'target_ids' in entry:
@@ -318,7 +325,8 @@ class VQAFineTuneDataset(Dataset):
                 ques_labels.append(entry['ques_label'])
             if 'img_id' in entry:
                 img_ids.append(entry['img_id'])
-
+            if 'features' in entry:
+                features.append(entry['features'])
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
             # word_mask = target_ids != self.processor.tokenizer.pad_token_id
@@ -342,6 +350,7 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['img_id'] = img_ids
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
+        batch_entry['features'] = torch.stack(features)
         # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
         # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
         # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
@@ -367,11 +376,11 @@ class VQAFineTuneDataset_memory(Dataset):
         if 'blip' in self.args.backbone:
             self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 
-            if args.use_vis_order_embedding:
-                additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
-                        [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
-                special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
-                num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
+            # if args.use_vis_order_embedding:
+            #     additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
+            #             [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
+            #     special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
+            #     num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
 
         self.answer_normalizer = VQAEvaluator()
 
@@ -427,7 +436,7 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        data_dir = "/home/deepayan.das/projects/VQACL/datasets/COCO"
+        data_dir = "../datasets/COCO"
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
@@ -471,10 +480,13 @@ class VQAFineTuneDataset_memory(Dataset):
             
             ###### Text #####
             # caption = datum['caption']
-            if 'sent' in datum:
-                sent = datum['sent']
-            elif 'question' in datum:
-                sent = datum['question']
+            if self.args.use_gen_data:
+                sent = datum['Q'][0]
+            else:
+                if 'sent' in datum:
+                    sent = datum['sent']
+                elif 'question' in datum:
+                    sent = datum['question']
 
             sent = f"Question: {sent} Answer:"
             inputs = self.processor(image, text=sent, max_length=20, 
@@ -485,9 +497,7 @@ class VQAFineTuneDataset_memory(Dataset):
 
         question_id = datum['question_id']
         out_dict['question_id'] = question_id
-
         out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
-
         out_dict['img_id'] = img_id
         out_dict['sent'] = sent
         out_dict['input_ids'] = inputs["input_ids"]
@@ -508,8 +518,11 @@ class VQAFineTuneDataset_memory(Dataset):
                 out_dict['target'] = target
 
             elif self.args.raw_label:
-                answers = datum['answers']
-                answer = random.choice(answers)['answer']
+                if self.args.use_gen_data:
+                    answer = datum["A"][0]
+                else:
+                    answers = datum['answers']
+                    answer = random.choice(answers)['answer']
 
                 if self.args.answer_normalize:
                     answer = self.answer_normalizer.normalize_answer(answer)
@@ -525,24 +538,28 @@ class VQAFineTuneDataset_memory(Dataset):
                 out_dict['target_length'] = len(target_ids)
 
             else:
-
-                answers = []
-                scores = []
-                for a, s in label.items():
-                    answers.append(a)
-                    scores.append(s)
-
-                score_sum = sum(scores)
-
-                if score_sum == 0:
-                    answer = ''
-                    score = 0.
+                if self.args.use_gen_data:
+                    answer = datum['A'][0]
+                    score = 0.0
+                    answers = [answer]
                 else:
-                    prob = [score / score_sum for score in scores]
-                    choice = np.random.multinomial(1, prob).argmax()
-                    answer = answers[choice]
-                    score = scores[choice]
-                    assert len(answer) > 0, (sent, label, choice, answer)
+                    answers = []
+                    scores = []
+                    for a, s in label.items():
+                        answers.append(a)
+                        scores.append(s)
+
+                    score_sum = sum(scores)
+
+                    if score_sum == 0:
+                        answer = ''
+                        score = 0.
+                    else:
+                        prob = [score / score_sum for score in scores]
+                        choice = np.random.multinomial(1, prob).argmax()
+                        answer = answers[choice]
+                        score = scores[choice]
+                        assert len(answer) > 0, (sent, label, choice, answer)
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers

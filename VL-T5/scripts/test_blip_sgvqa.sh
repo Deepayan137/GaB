@@ -1,20 +1,16 @@
 # The name of experiment
-name='naiveblip_cl_gen'
+name='naiveblip_sgvqa_mem'
 
 output=snap/$name
 
 
 PYTHONPATH=$PYTHONPATH:./src \
-python src/vqacl.py \
-        --train karpathy_train \
-        --valid karpathy_val \
-        --test karpathy_test \
+python src/sgvqa.py \
+        --train train \
+        --valid val \
+        --test val \
         --optim adamw \
-        --warmup_ratio 0.1 \
-        --clip_grad_norm 5 \
-        --lr 1e-4 \
-        --epochs 3 \
-        --num_workers 4 \
+        --num_workers 0 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
         --num_beams 5 \
@@ -24,4 +20,5 @@ python src/vqacl.py \
         --local-rank 0 \
         --eval_blip True \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_cl_gen/q_location_LAST'
+        --checkpoint 'snap/naiveblip_sgvqa_mem/relation_BEST' \
+        --show_train_progress True

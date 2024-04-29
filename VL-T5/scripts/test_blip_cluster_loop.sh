@@ -15,10 +15,10 @@
 # names=('naiveblip_scratch_nohier_qtoken' 'naiveblip_scratch_qtoken')
 #names=('naiveblip_qtoken_1ep' 'naiveblip_cl_qtoken_1ep')
 # names=('naiveblip_scratch_nohier_qtoken_1e' 'naiveblip_scratch_qtoken_1e')
-names=('naiveblip_cl_nohier_qtoken_1e')
+names=('naiveblip_ewc')
 # List of all tasks
 
-All_task=('q_recognition' 'q_location' 'q_judge' 'q_commonsense' 'q_count' 'q_action' 'q_color' 'q_type' 'q_subcategory' 'q_causal')
+All_task=('q_recognition' 'q_location' 'q_judge' 'q_commonsense' 'q_count' 'q_action' 'q_color' 'q_type' 'q_subcategory')
 
 # Loop over each name
 for name in "${names[@]}"; do
@@ -26,7 +26,7 @@ for name in "${names[@]}"; do
     if [[ $name == *"full" ]]; then
         ft_layers='full'
     else
-        ft_layers='query tokens'
+        ft_layers='query_tokens'
     fi
 
     # Loop over each task
@@ -54,7 +54,7 @@ for name in "${names[@]}"; do
             --local-rank 0 \
             --eval_blip True \
             --checkpoint $checkpoint \
-            --ft_layers "$ft_layers" \
+            --ft_layers 'query_tokens'\
             ${@:2}
     done
 done

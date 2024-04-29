@@ -20,7 +20,7 @@ class SGVQA(Dataset):
 	def __init__(self, task='object', split='train', scenario='scene', verbose=True, args=None):
 		super().__init__()
 		filename = f'fcl_mmf_{task}_{split}.npy'
-		data_path = os.path.join('/home/deepayan.das/projects/VQACL/datasets/npy', scenario, filename)
+		data_path = os.path.join('../datasets/npy', scenario, filename)
 		print(data_path)
 		self.data = np.load(data_path, allow_pickle=True)
 		# self.data = self.data[:50]
@@ -48,7 +48,7 @@ class SGVQA(Dataset):
 			image_dir = 'gvqa'
 		elif datum['image_source'] == 'textvqa':
 			image_dir = f"textvqa_train"
-		f = f"{os.path.join(f'/home/deepayan.das/projects/VQACL/datasets/{image_dir}', img_id)}.jpg"
+		f = f"{os.path.join(f'../datasets/{image_dir}', img_id)}.jpg"
 		if os.path.exists(f):
 			image = Image.open(f).convert("RGB")
 		else:
@@ -166,7 +166,7 @@ class SGVQA_memory(Dataset):
 			image_dir = 'gvqa'
 		elif datum['image_source'] == 'textvqa':
 			image_dir = f"textvqa_{self.split}"
-		f = f"{os.path.join(f'/home/deepayan.das/projects/VQACL/datasets/{image_dir}', img_id)}.jpg"
+		f = f"{os.path.join(f'../datasets/{image_dir}', img_id)}.jpg"
 		if os.path.exists(f):
 			image = Image.open(f).convert("RGB")
 		else:

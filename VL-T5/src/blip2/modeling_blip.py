@@ -355,6 +355,42 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             prompt_pool=prompt_pool)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
     
+    @torch.no_grad()  # Ensure that gradients are not calculated for this operation
+    def get_features(self, pixel_values):
+        """
+        Extract features from the vision model and the query transformer.
+
+        Args:
+            pixel_values (torch.Tensor): The pixel values of the images to process.
+
+        Returns:
+            torch.Tensor: The features extracted by the query transformer.
+        """
+        # Ensure the model is in eval mode, which is standard practice when not training
+        self.eval()
+
+        # Forward pass through the vision model to get image embeddings
+        vision_outputs = self.vision_model(pixel_values=pixel_values, return_dict=True)
+        image_embeds = vision_outputs.last_hidden_state
+
+        # Forward pass through the query transformer
+        image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
+        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
+        query_outputs = self.qformer(
+            query_embeds=query_tokens,
+            encoder_hidden_states=image_embeds,
+            encoder_attention_mask=image_attention_mask,
+            return_dict=True,
+        )
+
+        # Return the last hidden state which are the features from the query transformer
+        query_features = query_outputs.last_hidden_state
+
+        # Switch back to training mode
+        self.train()
+
+        return query_features
+
     def forward(self,
         pixel_values,
         input_ids,
@@ -390,7 +426,6 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             return_dict=return_dict,
         )
         query_output = query_outputs[0]
-
         # step 3: use the language model, conditioned on the query outputs and the prompt
         language_model_inputs = self.language_projection(query_output)
         language_model_attention_mask = torch.ones(
