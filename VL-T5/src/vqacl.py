@@ -435,6 +435,11 @@ class Trainer(TrainerBase):
                                                             ) 
                 self.save(task + "_LAST")
                 prev_task_id = task_idx - 1
+
+                ## saving lm_head for the task
+                projection_state = self.model.language_projection.state_dict()  
+                torch.save(projection_state, os.path.join(self.args.output, f"{task}_projection.pth"))
+                
                 if prev_task_id >= 0:
                     prev_task = id2task[prev_task_id]
                     print("Removing checkpoint for a previous task")
@@ -473,7 +478,7 @@ class Trainer(TrainerBase):
             if self.args.distributed:
                 results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
             else:
-                results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings)
+                results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num, embeddings=embeddings, task=self.task_list[task_idx])
 
         loss = results['loss']
         

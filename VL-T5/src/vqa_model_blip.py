@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-
 from src.modeling_blip import Blip2VQACL
 from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
 
@@ -494,6 +493,7 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         self.bce_loss = nn.BCEWithLogitsLoss()
         self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
         
+        print("Freezing vision model")
         for name, param in self.vision_model.named_parameters():
             param.requires_grad = False
         
@@ -502,14 +502,15 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         # for name, param in self.qformer.named_parameters():
         #     param.requires_grad = False
         
-        print("Freezing qformer all but last layer")
+        print("Freezing qformer")
         num_layers = len(self.qformer.encoder.layer)
 
         # for i, layer in enumerate(self.qformer.encoder.layer):
         #     # Freeze all layers except the last one
         #     if i < num_layers - 1:
-        #         for param in layer.parameters():
-        #             param.requires_grad = False
+        for param in self.qformer.parameters():
+            param.requires_grad = False
+        self.qformer.eval()
 
         # self.query_tokens.requires_grad = True
         # print("freeze vision encoder")
@@ -517,8 +518,14 @@ class NaiveBLIP2(Blip2ForConditionalGeneration):
         for name, param in self.language_model.named_parameters():
             param.requires_grad = False
 
+        for name, param in self.named_parameters():
+            param.requires_grad = False
         print("Freezing language model but lm_head") 
-        self.language_model.lm_head.requires_grad_(True)
+        for name, param in self.language_projection.named_parameters():
+            param.requires_grad = True
+        for name, param in self.language_model.lm_head.named_parameters():
+            param.requires_grad = True
+ 
         # self.eos_token_id = self.processor.tokenizer('\n', add_special_tokens=False).input_ids[0]
     
     def get_patch_embeddings(self, x):
