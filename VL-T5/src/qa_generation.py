@@ -79,7 +79,6 @@ if __name__ == "__main__":
         data = json.load(f)
     
     random.shuffle(data)
-    data = data[:10]
 
     inference(current_task, data, out_file_path= out_file_path, img_data_path = img_data_path)
     
