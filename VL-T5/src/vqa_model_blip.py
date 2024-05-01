@@ -329,4 +329,3 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 #     #             pbar.update(1)
 #     #         validation(model, val_loader_cate)
 #     # torch.save(model.state_dict(), os.path.join('snap/test/q_location.pth'))
-

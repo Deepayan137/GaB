@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import copy
 
 from transformers.models.blip_2.modeling_blip_2 import (Blip2VisionModel,
-	Blip2ForConditionalGeneration, Blip2QFormerLayer, Blip2QFormerEncoder, Blip2QFormerModel, Blip2ForConditionalGenerationModelOutput)
+    Blip2ForConditionalGeneration, Blip2QFormerLayer, Blip2QFormerEncoder, Blip2QFormerModel, Blip2ForConditionalGenerationModelOutput)
 from transformers.pytorch_utils import apply_chunking_to_forward
 from transformers.modeling_outputs import (BaseModelOutputWithPastAndCrossAttentions, 
     BaseModelOutputWithPoolingAndCrossAttentions, BaseModelOutputWithPooling)
@@ -383,8 +383,6 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             return_dict=True,
         )
 
-        # Return the last hidden state which are the features from the query transformer
-        query_features = query_outputs.last_hidden_state
 
         # Switch back to training mode
         self.train()

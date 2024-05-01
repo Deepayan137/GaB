@@ -29,6 +29,6 @@ python src/vqacl.py \
         --optim 'blip_adamw' \
         --eval_blip True \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_cl_gen/q_commonsense_LAST' \
+        --checkpoint 'snap/naiveblip_cl_gen/q_action_LAST' \
         --local-rank 0 \
         

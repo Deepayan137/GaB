@@ -132,8 +132,6 @@ class VQAFineTuneDataset(Dataset):
 
             'train2014': os.path.join(data_dir, f'train2014'),
             'val2014': os.path.join(data_dir, f'val2014'),
-            'train2014_feat': os.path.join(data_dir, f'train2014_feat'),
-            'val2014_feat': os.path.join(data_dir, f'val2014_feat'),
         }
 
 
@@ -175,10 +173,7 @@ class VQAFineTuneDataset(Dataset):
             inputs = self.processor(image, text=sent, max_length=max_length, 
                 truncation=True, return_tensors="pt")
             out_dict['pixel_values'] = inputs['pixel_values']
-            feat_path = self.source_dir[f'{split}_feat'], img_id +'.pth'
-            if os.path.exists(feat_path):
-                features = torch.load(feat_path)
-
+    
 
 
         question_id = datum['question_id']
@@ -251,7 +246,6 @@ class VQAFineTuneDataset(Dataset):
                     max_length=10, truncation=True)
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
-                out_dict['features'] = features
         return out_dict
 
 
@@ -263,9 +257,6 @@ class VQAFineTuneDataset(Dataset):
         B = len(batch)
         S_W_L = max(entry['input_length'] for entry in batch)
         input_ids = torch.ones(B, S_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
-        if 'qformer_input_length' in batch[0]:
-            Q_W_L = max(entry['qformer_input_length'] for entry in batch)
-            qformer_input_ids = torch.zeros(B, Q_W_L, dtype=torch.long)
         if args.use_vision:
             vis_feats = torch.zeros(B, 3, 224, 224, dtype=torch.float)
 
@@ -291,16 +282,12 @@ class VQAFineTuneDataset(Dataset):
 
         cate_labels = []
         ques_labels = []
-        features = []
         for i, entry in enumerate(batch):
             input_ids[i, :entry['input_length']] = entry['input_ids'][0]
             if 'target_ids' in entry:
                 target_ids[i, :entry['target_length']] = entry['target_ids']
             if args.use_vision:
                 vis_feats[i] += entry['pixel_values'][0]
-                # img_ids.append(entry['img_id'])
-                # img_paths.append(entry['img_path'])
-
             if 'target' in entry:
                 targets[i] += entry['target']
                 # targets.append(entry['target'])
@@ -325,12 +312,8 @@ class VQAFineTuneDataset(Dataset):
                 ques_labels.append(entry['ques_label'])
             if 'img_id' in entry:
                 img_ids.append(entry['img_id'])
-            if 'features' in entry:
-                features.append(entry['features'])
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
-            # word_mask = target_ids != self.processor.tokenizer.pad_token_id
-            # target_ids[~word_mask] = -100
             batch_entry['target_ids'] = target_ids
         if 'target' in batch[0]:
             # targets = torch.stack(targets, dim=0)
@@ -338,8 +321,6 @@ class VQAFineTuneDataset(Dataset):
 
         if args.use_vision:
             batch_entry['pixel_values'] = vis_feats
-            # batch_entry['img_id'] = img_ids
-            # batch_entry['img_paths'] = img_paths
 
         batch_entry['sent'] = sentences
         batch_entry['question_ids'] = question_ids
@@ -350,7 +331,6 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['img_id'] = img_ids
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
-        batch_entry['features'] = torch.stack(features)
         # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
         # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
         # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
@@ -481,7 +461,9 @@ class VQAFineTuneDataset_memory(Dataset):
             ###### Text #####
             # caption = datum['caption']
             if self.args.use_gen_data:
-                sent = datum['Q'][0]
+                for key in datum.keys():
+                    if key.startswith("Q_"):
+                        sent = datum[key][0]
             else:
                 if 'sent' in datum:
                     sent = datum['sent']
@@ -519,7 +501,9 @@ class VQAFineTuneDataset_memory(Dataset):
 
             elif self.args.raw_label:
                 if self.args.use_gen_data:
-                    answer = datum["A"][0]
+                    for key in datum.keys():
+                        if key.startswith("A_"):
+                            answer = datum[key][0]
                 else:
                     answers = datum['answers']
                     answer = random.choice(answers)['answer']
@@ -539,7 +523,9 @@ class VQAFineTuneDataset_memory(Dataset):
 
             else:
                 if self.args.use_gen_data:
-                    answer = datum['A'][0]
+                    for key in datum.keys():
+                        if key.startswith("A_"):
+                            answer = datum[key][0]
                     score = 0.0
                     answers = [answer]
                 else:

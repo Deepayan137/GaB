@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_qtoken
+#SBATCH --job-name=train_naiveblip_cl_syn
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
@@ -7,10 +7,10 @@
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_naiveblip_real.out
+#SBATCH -o logs/train_naiveblip_syn.out
 
 
-name=naiveblip_cl_qtoken
+name=naiveblip_cl_syn
 
 output=snap/$name
 
@@ -48,5 +48,6 @@ python -m torch.distributed.launch \
         --use_class_hierarchy True \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
-        --checkpoint 'snap/naiveblip_cl_qtoken/q_recognition_LAST' \
-        --memory
+        --checkpoint 'snap/naiveblip_cl_syn/q_location_LAST' \
+        --memory \
+        --use_gen_data True 

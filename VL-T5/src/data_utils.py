@@ -14,9 +14,13 @@ sys.path.insert(0, '../')
 from Question_type import *
 from torchvision.transforms.functional import to_tensor
 
+
+
 def get_memory_data(args, task_idx, each_memory, Examplar_set):
 	if args.use_gen_data:
-		data_info_path = ('../datasets/vqa/Partition_Q_V2_subset/karpathy_train_' + f'{All_task[task_idx]}.json')
+		each_memory = 5000
+		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+		data_info_path = ('../datasets/vqa/Partition_Q_V2_subset_new/karpathy_train_' + f'{All_task[task_idx]}.json')
 	else:
 		data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{All_task[task_idx - 1]}.json')
 	with open(data_info_path) as f:
@@ -26,23 +30,32 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set):
 		each_memory_for_cate = int(each_memory / len(Category_splits))
 		for cate in Category_splits:
 			num = 0
-			Examplar_set[cate].append([])
+			if not args.use_gen_data:
+				Examplar_set[cate].append([])
 			for _d in data_info_dicts:
 				img_id = _d['img_id']
 				if img_id in ImgId_cate_map:
 					if ImgId_cate_map[img_id] in Category_splits[cate]:
-						Examplar_set[cate][task_idx - 1].append(_d)
+						if not args.use_gen_data:
+							Examplar_set[cate][task_idx - 1].append(_d)
+						else:
+							Examplar_set[cate].append(_d)
 						num += 1
 						if num >= each_memory_for_cate:
 							break
 		print('Load from Partition_Q_v3......')
-		for cate in Category_splits:
-			for i in range(task_idx):
-				Examplar_set[cate][i] = Examplar_set[cate][i][: each_memory_for_cate]
-		All_examplar = []
-		for E_set in Examplar_set:
-			for task_set in Examplar_set[E_set]:
-				All_examplar += task_set
+		if not args.use_gen_data:
+			for cate in Category_splits:
+				for i in range(task_idx):
+					Examplar_set[cate][i] = Examplar_set[cate][i][: each_memory_for_cate]
+			All_examplar = []
+			for E_set in Examplar_set:
+				for task_set in Examplar_set[E_set]:
+					All_examplar += task_set
+		else:
+			All_examplar = []
+			for E_set in Examplar_set:
+				All_examplar += Examplar_set[E_set]
 	else:
 		All_examplar = data_info_dicts[:each_memory]
 	print("# The size of the cate Memory:", len(All_examplar))			
@@ -57,7 +70,7 @@ if __name__ == "__main__":
 	args = parse_args()
 	args.backbone = 'blip2'
 	args.train = 'karpathy_train'
-	args.use_gen_data = False
+	args.use_gen_data = True
 	task_idx = 1
 	M = 5000
 	Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}

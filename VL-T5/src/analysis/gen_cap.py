@@ -25,8 +25,7 @@ nlp = spacy.load("en_core_web_sm")
 
 device = 'cuda'
 args = parse_args()
-def get_model():
-	model_name = "Salesforce/blip2-opt-2.7b"
+def get_model(model_name):
 	processor = AutoProcessor.from_pretrained(model_name)
 	
 	config = Blip2Config.from_pretrained(model_name)
@@ -39,7 +38,7 @@ def create_rehearsal_memory(dest_root):
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
 		os.makedirs(dest_root, exist_ok=True)
 		if task_idx > 0:
-			each_memory = int(5000 / task_idx)
+			each_memory = 5000
 			data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{All_task[task_idx]}.json')
 			with open(data_info_path, 'r') as f:
 				data_info_dicts = json.load(f)
@@ -120,21 +119,22 @@ def extract_features(sentence):
 
 if __name__ == "__main__":
 	path = f"../datasets/vqa/Partition_Q_V2/"
-	dest_root = f"../datasets/vqa/Partition_Q_V2_subset"
+	dest_root = f"../datasets/vqa/Partition_Q_V2_subset_new"
+	os.makedirs(dest_root, exist_ok=True)
 	root = f"../datasets/COCO/"
-	# if not os.path.exists(dest_root):
 	create_rehearsal_memory(dest_root)
-	
-	model, processor = get_model()
+	model_name = "Salesforce/blip2-opt-2.7b"
+	model, processor = get_model(model_name)
+	ckpt_path = 'snap/naiveblip_cl_qtoken'
+	if os.path.exists(ckpt_path):
+		checkpoint = torch.load(path, map_location=None)
+		model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+		model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+
 	img_paths = []
 	task2id = {All_task[i]:i for i in range(len(All_task))}
 	id2task = {v:k for k, v in task2id.items()}
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
-	# start = 'q_type'
-	# end = 'q_type'
-	# start_idx = task2id[start]
-	# end_idx = task2id[end] + 1
-	# for i, task in enumerate(All_task[start_idx:end_idx]):
 	task = All_task[task_idx]
 	if task_idx > 0:
 		fname = f"karpathy_train_{task}.json"
