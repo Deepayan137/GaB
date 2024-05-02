@@ -152,7 +152,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         self.eval()
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        query_outputs, vision_outputs = self.model.get_features(pixel_values)
+        query_outputs, vision_outputs = self.get_features(pixel_values)
         input_ids = batch['input_ids'].to(device) # bs, 20
        
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)

@@ -482,16 +482,23 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         vision_outputs,
         input_ids=None,
         attention_mask=None,
+        mode='answers',
         **generate_kwargs):
 
         if hasattr(self, "hf_device_map"):
             # preprocess for `accelerate`
             self._preprocess_accelerate()
-
-        batch_size = pixel_values.shape[0]
+        query_output = query_outputs[0]
+        batch_size = query_output.shape[0]
         query_output = query_outputs.last_hidden_state
-
-        language_model_inputs = self.language_projection(query_output)
+        image_embeds = vision_outputs.last_hidden_state
+        if mode == 'answers':
+            language_model_inputs = self.language_projection_answers(query_output)
+        elif mode == 'questions':
+            language_model_inputs = self.language_projection_questions(query_output)
+        else:
+            raise ValueError("Mode must be answers or questions ")
+        # language_model_inputs = self.language_projection(query_output)
         language_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
         )

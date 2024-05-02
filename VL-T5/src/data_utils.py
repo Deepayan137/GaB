@@ -99,32 +99,38 @@ class QAGen():
 		ckpt = torch.load(os.path.join(self.savepath, f'{task}_LAST.pth'))
 		print(f"question gen projection head loaded for task {task} from {self.savepath}")
 		self.model.language_projection_questions.load_state_dict(ckpt['model']['language_projection_questions'])
+		self.model.language_projection_answers.load_state_dict(ckpt['model']['language_projection_answers'])
 	
+
 	def generate(self, data, task, batch_size=32):
-		pairs = []
+		entries = {}
 		count = 0
 		self._load_model(task)
-		loader = get_loader_memory(self.args, All_task, data)
+		data=data[:10]
+		loader = get_loader_memory(self.args, All_task, data, batch_size=2)
 		for key in loader.keys():
 			loader_cate = loader[key]
 			for i, batch in enumerate(loader_cate):
-				import pdb;pdb.set_trace()
 				outputs = self.model.get_questions(batch)
-				questions = outputs['questions']
-				sents = [f"Question: {question} Answer:" for question in questions]
-				input_ids = self.processor.tokenizer(sents, max_length=20, truncation=True, return_tensors='pt')
-				batch['input_ids'] = input_ids['input_ids']
-				outputs = self.model.test_step(batch, task)
-				answers = outputs['pred_ans']
-				qa = list(zip(questions, answers))
+				qids = batch['question_ids']
+				generated_qa = outputs['questions']
+				questions = [f"{item.split('?')[0]}?" for item in generated_qa]
+				# answers = [f"{item.split('?')[1]}" for item in generated_qa]
+				if self.args.self_train:
+					sents = [f"Question: {question} Answer:" for question in questions]
+					input_ids = self.processor.tokenizer(text=sents, max_length=20, truncation=True, padding=True, return_tensors='pt')
+					batch['input_ids'] = input_ids['input_ids']
+					outputs = self.model.test_step(batch, task)
+					answers = outputs['pred_ans']
 				try:
-					pairs.extend(list(zip(data_subset, qa)))
-					count += len(qa)
+					for i, qid in enumerate(qids):
+						entries[qid] = (questions[i], answers[i])
+					count += len(qids)
 				except Exception as e:
 					logging.info(f"Err processing batch {i+1}: {e}")
 					continue
-				logging.info(f"{i+1} out of {total_batches} completed")
-			return pairs
+				# logging.info(f"{i+1} out of {total_batches} completed")
+		return entries
 	
 
 	
@@ -148,10 +154,6 @@ class QAGen():
 							num += 1
 							if num >= each_memory_for_cate:
 								break
-			# All_examplar = []
-			# for E_set in Examplar_set:
-			# 	All_examplar += Examplar_set[E_set]
-
 		return Examplar_set
 
 
@@ -168,15 +170,18 @@ if __name__ == "__main__":
 	processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 	savepath = 'snap/naiveblip_qa_qtoken/'
 	args.backbone = backbone
-	qagen = QAGen(args, model, processor, savepath)
+	args.self_train = True
+	dest = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/datasets/vqa/Partition_Q_V2_st/"
+	os.makedirs(dest, exist_ok=True)
 	if task_idx > 0 :
+		qagen = QAGen(args, model, processor, savepath)
 		task = All_task[task_idx]
 		Examplar_set = qagen._load_data(task_idx)
 		split = int(5000/task_idx)
 		cat_split = int(split / 5)
 		new_data = []
 		incorrect_samples=0
-		total_samples = 0
+		total_samples = 5000
 		for i in range(task_idx):
 			qg_task = All_task[i]
 			print(f"Now task is {task} and question generation will be from {qg_task}")
@@ -187,24 +192,19 @@ if __name__ == "__main__":
 			All_examplar = []
 			for key in Examplar_set.keys():
 				All_examplar += Examplar_set[key][start_idx:end_idx]
-			pairs = qagen.generate(All_examplar, qg_task, batch_size=32)
-			total_samples += len(pairs)
-			for i, entry in enumerate(pairs):
-				try:
-					_d, qa = entry
-					questions, answers = qagen.postprocess(qa)
-					if len(questions) > 0 and len(answers) > 0:
-						# parsed_data[image_id]={}
-						_d[f"Q_{config_task}"] = questions
-						_d[f"A_{config_task}"] = answers
-						new_data.append(_d)
-					else:
-						incorrect_samples +=1
-				except Exception as e:
-					logging.info(f"Unexpected error at index {i}: {e}")
-					incorrect_samples += 1
-		# Serialize and save the data
-		with open(f'generated/{task}_gen_qa_pairs.json', 'w') as json_file:
+			entries = qagen.generate(All_examplar, qg_task, batch_size=2)
+			# Serialize and save the data
+			for _d in All_examplar:
+				qid = _d['question_id']
+				(question, answer) = entries[qid]
+				if len(question) > 0 and len(answer) > 0:
+					_d[f"Q_{qg_task}"] = question
+					_d[f"A_{qg_task}"] = answer
+					new_data.append(_d)
+				else:
+					incorrect_samples +=1
+		
+		with open(f'{dest}/karpathy_train_{task}.json', 'w') as json_file:
 			json.dump(new_data, json_file, indent=4)
 		logging.info("Finished\n")
 		err_fr = (incorrect_samples/total_samples)*100
