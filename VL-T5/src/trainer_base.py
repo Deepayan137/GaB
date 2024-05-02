@@ -95,7 +95,6 @@ class TrainerBase(object):
 
         config.share_vis_lang_layer_norm = args.share_vis_lang_layer_norm
         config.classifier = args.classifier
-        # config.ft_layers = "last"
         return config
 
 
@@ -104,7 +103,6 @@ class TrainerBase(object):
 
         model_name = self.args.backbone
         if 'blip' in model_name:
-            # model_name = "pretrained/models--Salesforce--blip2-opt-2.7b/snapshots/235c75ea3861136b9dd202c6edc6a7ba285c35e3"
             model_name = "Salesforce/blip2-opt-2.7b"
         print(f"Loading {model_class}")
         model = model_class.from_pretrained(model_name,
@@ -162,8 +160,6 @@ class TrainerBase(object):
         if 'blip_adamw' in self.args.optim:
             optim = torch.optim.AdamW(params=self.model.parameters(), lr=1e-4, 
                 weight_decay=self.args.warmup_ratio)
-            # nparam = count_parameters(self.model.parameters())
-            # print(f'trainable_parameters = {nparam}')
 
         elif 'adamw' in self.args.optim:
             from transformers.optimization import AdamW, get_linear_schedule_with_warmup, get_constant_schedule_with_warmup
@@ -199,9 +195,6 @@ class TrainerBase(object):
 
                 for n, p in self.model.module.shared.named_parameters():
                     p.requires_grad = True
-                # self.model.module.encoder.prefix.requires_grad = True
-                # for n, p in self.model.module.encoder.prompt_pool_module.named_parameters():
-                #     p.requires_grad = True
 
                 optimizer_grouped_parameters = [
                     {
@@ -220,9 +213,6 @@ class TrainerBase(object):
                           lr=self.args.lr, eps=self.args.adam_eps)
             lr_scheduler = get_constant_schedule_with_warmup(
                 optim, warmup_iters)
-            # lr_scheduler = get_linear_schedule_with_warmup(
-            #     optim, warmup_iters, t_total)
-
         else:
             optim = self.args.optimizer(
                 list(self.model.parameters()), self.args.lr)
@@ -258,8 +248,6 @@ class TrainerBase(object):
         def init_bert_weights(module):
             """ Initialize the weights."""
             if isinstance(module, (nn.Linear, nn.Embedding)):
-                # Slightly different from the TF version which uses truncated_normal for initialization
-                # cf https://github.com/pytorch/pytorch/pull/5617
                 module.weight.data.normal_(mean=0.0, std=1)
             elif isinstance(module, nn.LayerNorm):
                 module.bias.data.zero_()
@@ -307,7 +295,8 @@ class TrainerBase(object):
             elif self.args.ft_layers == 'query_tokens':
                 state_dict_to_save["model"] = {
                 'query_tokens': actual_model.query_tokens.data, 
-                'language_projection':actual_model.language_projection.state_dict()}
+                'language_projection_answers':actual_model.language_projection_answers.state_dict(),
+                'language_projection_questions'::actual_model.language_projection_questions.state_dict()}
             elif self.args.ft_layers == 'last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 state_dict_to_save["model"] = {
@@ -339,7 +328,8 @@ class TrainerBase(object):
                 actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
             elif self.args.ft_layers == 'query_tokens':
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-                actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+                actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
+                actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
             if self.args.ft_layers =='last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])

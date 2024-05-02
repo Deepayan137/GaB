@@ -14,7 +14,19 @@ sys.path.insert(0, '../')
 from Question_type import *
 from torchvision.transforms.functional import to_tensor
 
+import os
+import re
+import json
+import torch
+import transformers
+import logging
+from tqdm import *
+from transformers import LlamaForCausalLM, LlamaTokenizer
+import warnings
+warnings.filterwarnings('ignore')
 
+MODEL_DIR="./llama-2-7b-chat-hf"
+All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 
 def get_memory_data(args, task_idx, each_memory, Examplar_set):
 	if args.use_gen_data:
@@ -61,30 +73,145 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set):
 	print("# The size of the cate Memory:", len(All_examplar))			
 	return All_examplar, Examplar_set
 
+class QAGen():
+	def __init__(self, args, model, processor, savepath):
+		self.args = args
+		self.device = 'cuda'
+		self.savepath = savepath
+		self.model = model
+		self.processor = processor
+		self.model.eval()
 
+	def postprocess(self, sents):
+		sents = sents.split('\n')
+		questions, answers = [], []
+		for sent in sents:
+			if 'Q:' in sent:
+				question, answer = sent.split('?')
+				question = question.split(':')[-1].strip()
+				answer = answer.split(':')[-1].strip()
+				if question != "" and answer != "":
+					questions.append(question)
+					answers.append(answer)
+		return questions, answers
+
+	def _load_model(self, task):
+		ckpt = torch.load(os.path.join(self.savepath, f'{task}_LAST.pth'))
+		print(f"question gen projection head loaded for task {task} from {self.savepath}")
+		self.model.language_projection_questions.load_state_dict(ckpt['model']['language_projection_questions'])
+	
+	def generate(self, data, task, batch_size=32):
+		pairs = []
+		count = 0
+		self._load_model(task)
+		loader = get_loader_memory(self.args, All_task, data)
+		for key in loader.keys():
+			loader_cate = loader[key]
+			for i, batch in enumerate(loader_cate):
+				import pdb;pdb.set_trace()
+				outputs = self.model.get_questions(batch)
+				questions = outputs['questions']
+				sents = [f"Question: {question} Answer:" for question in questions]
+				input_ids = self.processor.tokenizer(sents, max_length=20, truncation=True, return_tensors='pt')
+				batch['input_ids'] = input_ids['input_ids']
+				outputs = self.model.test_step(batch, task)
+				answers = outputs['pred_ans']
+				qa = list(zip(questions, answers))
+				try:
+					pairs.extend(list(zip(data_subset, qa)))
+					count += len(qa)
+				except Exception as e:
+					logging.info(f"Err processing batch {i+1}: {e}")
+					continue
+				logging.info(f"{i+1} out of {total_batches} completed")
+			return pairs
+	
+
+	
+	def _load_data(self, task_idx):
+		each_memory = 5000
+		root = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/datasets/vqa/Partition_Q_V2/karpathy_train_"
+		json_path = root + All_task[task_idx] + '.json'
+		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+		with open(json_path, 'r') as f:
+			data_info_dicts = json.load(f)
+		random.shuffle(data_info_dicts)
+		if args.use_class_hierarchy:
+			each_memory_for_cate = int(each_memory / len(Category_splits))
+			for cate in Category_splits:
+				num = 0
+				for _d in data_info_dicts:
+					img_id = _d['img_id']
+					if img_id in ImgId_cate_map:
+						if ImgId_cate_map[img_id] in Category_splits[cate]:
+							Examplar_set[cate].append(_d)
+							num += 1
+							if num >= each_memory_for_cate:
+								break
+			# All_examplar = []
+			# for E_set in Examplar_set:
+			# 	All_examplar += Examplar_set[E_set]
+
+		return Examplar_set
 
 
 if __name__ == "__main__":
-	from src.param import parse_args
-	from tqdm import *
-	args = parse_args()
-	args.backbone = 'blip2'
-	args.train = 'karpathy_train'
-	args.use_gen_data = True
 	task_idx = 1
-	M = 5000
-	Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-	train_dset = VQADataset(args.train, True)
-	for task_idx, task in enumerate(All_task):
-		if task_idx >0:
-			each_memory = M//task_idx
-			All_examplar, Examplar_set = get_memory_data(args, task_idx, each_memory, Examplar_set)
-			memory_loader = get_loader_memory(args, All_task, All_examplar, train_dset, workers=0)
-			Category_splits_random = random_dic(Category_splits)
-			for idx, cateGroup in enumerate(Category_splits_random):
-				memory_loader_cate = memory_loader[cateGroup]
-				for i, batch in enumerate(tqdm(memory_loader_cate)):
-					pix = batch['pixel_values']
+	backbone = "Salesforce/blip2-opt-2.7b"
+	from src.param import parse_args
+	args = parse_args()
+	from transformers import Blip2Config
+	config = Blip2Config.from_pretrained(backbone)
+	from transformers import AutoProcessor
+	from src.vqa_model_blip import NaiveBLIP2
+	model = NaiveBLIP2.from_pretrained(backbone, config=config)
+	processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+	savepath = 'snap/naiveblip_qa_qtoken/'
+	args.backbone = backbone
+	qagen = QAGen(args, model, processor, savepath)
+	if task_idx > 0 :
+		task = All_task[task_idx]
+		Examplar_set = qagen._load_data(task_idx)
+		split = int(5000/task_idx)
+		cat_split = int(split / 5)
+		new_data = []
+		incorrect_samples=0
+		total_samples = 0
+		for i in range(task_idx):
+			qg_task = All_task[i]
+			print(f"Now task is {task} and question generation will be from {qg_task}")
+			start_idx = i * cat_split
+			end_idx = start_idx + cat_split
+			print(f"start idx: {start_idx}")
+			print(f"end idx: {end_idx}")
+			All_examplar = []
+			for key in Examplar_set.keys():
+				All_examplar += Examplar_set[key][start_idx:end_idx]
+			pairs = qagen.generate(All_examplar, qg_task, batch_size=32)
+			total_samples += len(pairs)
+			for i, entry in enumerate(pairs):
+				try:
+					_d, qa = entry
+					questions, answers = qagen.postprocess(qa)
+					if len(questions) > 0 and len(answers) > 0:
+						# parsed_data[image_id]={}
+						_d[f"Q_{config_task}"] = questions
+						_d[f"A_{config_task}"] = answers
+						new_data.append(_d)
+					else:
+						incorrect_samples +=1
+				except Exception as e:
+					logging.info(f"Unexpected error at index {i}: {e}")
+					incorrect_samples += 1
+		# Serialize and save the data
+		with open(f'generated/{task}_gen_qa_pairs.json', 'w') as json_file:
+			json.dump(new_data, json_file, indent=4)
+		logging.info("Finished\n")
+		err_fr = (incorrect_samples/total_samples)*100
+		logging.info(f"Total number of samples:{total_samples}")
+		logging.info(f"num of incorrect_samples:{incorrect_samples}")
+		logging.info(f"% of incorrect_samples:{err_fr}")
+		logging.info(f"Total samples: {total_samples}")
 
 
 

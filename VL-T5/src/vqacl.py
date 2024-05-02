@@ -130,7 +130,18 @@ class Trainer(TrainerBase):
         if self.regularizer is not None:
             self.regularizer = self.regularizer.to(args.gpu)
         if 'blip' in self.args.backbone:
-            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+            # self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+            self.optim = optim.AdamW(
+                params=self.model.language_projection_answers.parameters(),
+                lr=1e-4,  # Example learning rate
+                weight_decay=self.args.warmup_ratio  # Example weight decay
+            )
+            self.optim_question = optim.AdamW(
+                params=self.model.language_projection_questions.parameters(),
+                lr=1e-5,  # Potentially different learning rate for question generation
+                weight_decay=self.args.warmup_ratio  # Using same weight decay as an example
+            )
+            self.lr_scheduler = None
         if args.multiGPU:
             if args.distributed:
                 self.model = DDP(self.model, device_ids=[args.gpu],
@@ -289,6 +300,7 @@ class Trainer(TrainerBase):
                     self.train_loader_cate = train_loader[cateGroup]
                     self.val_loader_cate = val_loader[cateGroup]
                     self.memory_loader_cate = memory_loader[cateGroup]
+                    self.question_loader_cate = train_loader_questions[cateGroup]
                     # Optimizer
                     if self.iftrain:
                         if len(self.memory_loader_cate.dataset) > 0:
@@ -396,13 +408,6 @@ class Trainer(TrainerBase):
                         else:
                             patience_counter += 1  # Increment the patience counter
                             print(f"No improvement for {patience_counter} epochs.")
-                        
-
-                        # if patience_counter > patience:
-                        #     print("Early stopping triggered.")
-                        #     print("Saving Last")
-                        #     self.save(task + "_LAST")
-                        #     break  # Break out of the training loop
                         if self.args.distributed:
                             dist.barrier()
                 if self.regularizer is not None:
@@ -415,7 +420,7 @@ class Trainer(TrainerBase):
 
     def train_step(self, batch, epoch_results, task_idx, each_memory):
         self.optim.zero_grad(set_to_none=True)
-
+        self.optim_question.zero_grad(set_to_none=True)
         if self.args.fp16 and _use_native_amp:
             with autocast():
                 if self.args.distributed:

@@ -46,7 +46,6 @@ class VQAFineTuneDataset(Dataset):
         self.verbose = verbose
         self.args = args
         self.mode = mode
-
         # Loading datasets to data
         self.sources = split.split(',')
         if 'blip' in self.args.backbone:
@@ -169,30 +168,29 @@ class VQAFineTuneDataset(Dataset):
                 sent = datum['question']
             # if 'instructblip' in self.args.backbone:
             max_length = 20
+
+           
             sent = f"Question: {sent.lower()} Answer:"
             inputs = self.processor(image, text=sent, max_length=max_length, 
                 truncation=True, return_tensors="pt")
+            out_dict['input_ids'] = inputs["input_ids"]
+            out_dict['input_length'] = len(inputs["input_ids"][0])
+            caption = f"{sent.lower()} {answer.lower()}"
+            cap_ids = self.processor.tokenizer.encode(caption, max_length=20, truncation=True)
+            out_dict['cap_ids'] = torch.LongTensor(cap_ids)
+            out_dict['cap_length'] = len(cap_ids)
             out_dict['pixel_values'] = inputs['pixel_values']
-    
-
 
         question_id = datum['question_id']
-        out_dict['question_id'] = question_id
-
-        out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
-
-        out_dict['img_id'] = img_id
         out_dict['sent'] = sent
-        out_dict['input_ids'] = inputs["input_ids"]
-        out_dict['input_length'] = len(inputs["input_ids"][0])
-        
-
+        out_dict['question_id'] = question_id
+        out_dict['ques_label'] = QuesId_task_map[str(question_id)] # ------
+        out_dict['img_id'] = img_id
         if 'is_topk_optimal' in datum:
             out_dict['is_topk_optimal'] = datum['is_topk_optimal']
         if 'label' in datum:
             label = datum['label']
             out_dict['label'] = label
-
             # 3129 topk answers
             if self.args.classifier:
                 target = torch.zeros(self.raw_dataset.num_answers)
@@ -206,16 +204,14 @@ class VQAFineTuneDataset(Dataset):
 
                 if self.args.answer_normalize:
                     answer = self.answer_normalizer.normalize_answer(answer)
-
                 score = int(len(answers) > 0)
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = [a['answer'] for a in answers]
-
                 target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
-
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
+                
 
             else:
                 # https://github.com/airsplay/lxmert/blob/master/src/pretrain/lxmert_pretrain.py#L191
@@ -241,9 +237,10 @@ class VQAFineTuneDataset(Dataset):
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
 
-                eos_token_id = [2]
+                
                 target_ids = self.processor.tokenizer.encode(answer, 
                     max_length=10, truncation=True)
+            
                 out_dict['target_ids'] = torch.LongTensor(target_ids)
                 out_dict['target_length'] = len(target_ids)
         return out_dict
@@ -267,6 +264,9 @@ class VQAFineTuneDataset(Dataset):
             T_W_L = max(entry['target_length'] for entry in batch)
             target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
         
+        if 'cap_ids' in batch[0]:
+            C_W_L = max(entry['cap_length'] for entry in batch)
+            cap_ids = torch.ones(B, C_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
         # if 'instruction_ids' in batch[0]:
         #     instruction_ids = torch.ones(B, len(batch[0]['instruction_ids']), dtype=torch.float)
         sentences = []
@@ -286,6 +286,8 @@ class VQAFineTuneDataset(Dataset):
             input_ids[i, :entry['input_length']] = entry['input_ids'][0]
             if 'target_ids' in entry:
                 target_ids[i, :entry['target_length']] = entry['target_ids']
+            if 'cap_ids' in entry:
+                cap_ids[i, :entry['cap_length']] = entry['cap_ids']
             if args.use_vision:
                 vis_feats[i] += entry['pixel_values'][0]
             if 'target' in entry:
@@ -315,6 +317,8 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['input_ids'] = input_ids
         if 'target_ids' in batch[0]:
             batch_entry['target_ids'] = target_ids
+        if 'cap_ids' in batch[0]:
+            batch_entry['cap_ids'] = cap_ids
         if 'target' in batch[0]:
             # targets = torch.stack(targets, dim=0)
             batch_entry['targets'] = targets
@@ -355,12 +359,6 @@ class VQAFineTuneDataset_memory(Dataset):
 
         if 'blip' in self.args.backbone:
             self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
-
-            # if args.use_vis_order_embedding:
-            #     additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
-            #             [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
-            #     special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
-            #     num_added_toks = self.processor.tokenizer.add_special_tokens(special_tokens_dict)
 
         self.answer_normalizer = VQAEvaluator()
 
@@ -661,7 +659,7 @@ class VQAFineTuneDataset_memory(Dataset):
 
 
 
-def get_loader_memory(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
+def get_loader_memory(args, coco_Ours, Examplar_set, _dset=None, split='karpathy_train', mode='train',
                batch_size=32, workers=4, distributed=False, gpu=0, topk=-1):
 
     verbose = (gpu == 0)
@@ -736,7 +734,7 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
         args=args,
         mode=mode,
         task=task,
-        cates=[i for i in range(80)],) # all categories
+        cates=[i for i in range(80)]) # all categories
 
     if distributed:
         sampler = DistributedSampler(dataset)
@@ -765,29 +763,9 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
     # cate_loader[CateGroup] = loader
     return loader
 
-def filter_blank_answers(dataset):
-        filtered_data = []
-        blanks = 0
-        for i in range(len(dataset)):
-            if dataset[i]['answer'].strip():  # Check if 'answer' is not blank
-                filtered_data.append(dataset[i])
-            else:
-                blanks+=1
-        return filtered_data
-
-class FilteredVQAFineTuneDataset():
-    def __init__(self, dataset):
-        self.data = filter_blank_answers(dataset)
-        self.collate_fn = dataset.collate_fn
-        
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return self.data[idx]
 
 def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
-               batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what'):
+               batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what',):
 
     verbose = (gpu == 0)
 
@@ -805,7 +783,7 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             args=args,
             mode=mode,
             task=task,
-            cates=cates,)
+            cates=cates)
         dataset_num = len(dataset)
         # total_num += dataset_num
         if distributed:

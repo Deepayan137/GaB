@@ -354,7 +354,12 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             pool_size=pool_size, 
             prompt_pool=prompt_pool)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
-    
+        self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, 
+            config.text_config.hidden_size)
+
+        self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
+            config.text_config.hidden_size)
+
     @torch.no_grad()  # Ensure that gradients are not calculated for this operation
     def get_features(self, pixel_values):
         """
@@ -387,11 +392,13 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         # Switch back to training mode
         self.train()
 
-        return query_features
+        return query_outputs, vision_outputs
 
     def forward(self,
-        pixel_values,
+        query_outputs,
+        vision_outputs,
         input_ids,
+        mode,
         attention_mask=None,
         decoder_input_ids=None,
         decoder_attention_mask=None,
@@ -401,31 +408,14 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         return_dict=None):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # step 1: forward the images through the vision encoder,
-        # to get image embeddings of shape (batch_size, seq_len, hidden_size)
-        vision_outputs = self.vision_model(
-            pixel_values=pixel_values,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-        image_embeds = vision_outputs[0]
-
-        # step 2: forward the query tokens through the QFormer, using the image embeddings for cross-attention
-        image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
-        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
-        query_outputs = self.qformer(
-            query_embeds=query_tokens,
-            encoder_hidden_states=image_embeds,
-            encoder_attention_mask=image_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
         query_output = query_outputs[0]
         # step 3: use the language model, conditioned on the query outputs and the prompt
-        language_model_inputs = self.language_projection(query_output)
+        if mode == 'answers':
+            language_model_inputs = self.language_projection_answers(query_output)
+        elif mode == 'questions':
+            language_model_inputs = self.language_projection_questions(query_output)
+        else:
+            raise ValueError("Mode must be answers or questions ")
         language_model_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
         )
@@ -488,7 +478,8 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
     @torch.no_grad()
     def generate(
         self,
-        pixel_values,
+        query_outputs,
+        vision_outputs,
         input_ids=None,
         attention_mask=None,
         **generate_kwargs):
@@ -498,16 +489,6 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             self._preprocess_accelerate()
 
         batch_size = pixel_values.shape[0]
-        image_embeds = self.vision_model(pixel_values, return_dict=True).last_hidden_state
-        image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
-
-        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
-        query_outputs = self.qformer(
-            query_embeds=query_tokens,
-            encoder_hidden_states=image_embeds,
-            encoder_attention_mask=image_attention_mask,
-            return_dict=True,
-        )
         query_output = query_outputs.last_hidden_state
 
         language_model_inputs = self.language_projection(query_output)
