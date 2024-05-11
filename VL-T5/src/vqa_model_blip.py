@@ -162,6 +162,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         self.eval()
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+        query_outputs, vision_outputs = self.get_features(pixel_values)
         input_ids = batch['input_ids'].to(device) # bs, 20
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
         
@@ -169,8 +170,13 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         # cate_labels = batch['cate_labels'].to(device)
         # ques_labels = batch['ques_labels'].to(device)
         max_new_tokens = 2
-        output = self.generate(input_ids=input_ids,pixel_values=pixel_values,attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,repetition_penalty=1.2)
+        output = self.generate(
+            query_outputs=query_outputs, 
+            vision_outputs=vision_outputs, 
+            input_ids=input_ids, 
+            attention_mask=attention_mask,
+            max_new_tokens=max_new_tokens, 
+            repetition_penalty=1.2)
         result = {}
         result['token_ids'] = output
         result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
@@ -179,13 +185,15 @@ class NaiveBLIP2(NaiveBlip2VQACL):
     def train_step(self, batch, current_task_id):
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
+        query_outputs, vision_outputs = self.get_features(pixel_values)
         input_ids = batch['input_ids'].to(device) # bs, 20
         lm_labels = batch["target_ids"].to(device) #[bs, 5]
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
         
         output = self(
+            query_outputs=query_outputs,
+            vision_outputs=vision_outputs,
             input_ids=input_ids,
-            pixel_values=pixel_values,
             attention_mask=attention_mask,
             labels=lm_labels)
         assert 'loss' in output

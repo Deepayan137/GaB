@@ -31,4 +31,4 @@ python src/sgvqa.py \
 --blip_model "naiveblip" \
 --scenario "function" \
 --memory \
---checkpoint "snap/naiveblip_sgvqa_mem_new/object_BEST.pth"
+--checkpoint "snap/naiveblip_sgvqa_mem_new/object_BEST"

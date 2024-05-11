@@ -7,7 +7,7 @@
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_naiveblip_sgvqa_mem_new2.out
+#SBATCH -o logs/train_naiveblip_sgvqa_mem_new3.out
 #SBATCH --signal=B:SIGTERM@300
 
 
