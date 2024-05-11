@@ -497,7 +497,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         elif mode == 'questions':
             language_model_inputs = self.language_projection_questions(query_output)
         else:
-            raise ValueError("Mode must be answers or questions ")
+            raise ValueError("Mode must be answers or questions")
         # language_model_inputs = self.language_projection(query_output)
         language_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device

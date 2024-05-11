@@ -1,5 +1,5 @@
 # The name of experiment
-name=naiveblip_cl_gen
+name=naiveblip_cl_syn_st
 
 output=snap/$name
 
@@ -18,7 +18,7 @@ python src/vqacl.py \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
         --num_beams 5 \
-        --batch_size 80 \
+        --batch_size 2 \
         --valid_batch_size 1 \
         --from_scratch \
         --optim 'blip_adamw' \
@@ -31,6 +31,8 @@ python src/vqacl.py \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
         --memory \
-        --checkpoint 'snap/naiveblip_cl_gen/q_recognition_LAST'\
+        --checkpoint 'snap/naiveblip_cl_syn_st/q_recognition_LAST'\
         --use_gen_data True \
+        --create_gen_data True \
+        --self_train False \
         --use_class_hierarchy True

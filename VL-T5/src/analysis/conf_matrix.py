@@ -9,12 +9,7 @@ blip_base = {
 	'q_location':16.78,
 	'q_judge':61.6,
 	'q_commonsense':66.03,
-	'q_count':30.36, 
-	'q_action':56.52,
-	'q_color':51.38,
-	'q_type':41.41,
-	'q_subcategory':43.42,
-	'q_causal':1.78
+	'q_count':30.36,
 }
 def plot_conf_mat(file_path, destination):
 	# Load your CSV file

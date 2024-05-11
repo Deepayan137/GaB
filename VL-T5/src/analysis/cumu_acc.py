@@ -3,8 +3,8 @@ import json
 
 import pandas as pd
 
-All_task = ['q_recognition', 'q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory','q_causal']
-All_task = ['q_location']
+All_task = ['q_recognition', 'q_location', 'q_judge', 'q_commonsense', 'q_count']
+# All_task = ['q_location']
 class Analysis(object):
 	def __init__(self, paths):
 		paths_with_pred = self._check_pred_dir_exists(paths)
@@ -15,7 +15,6 @@ class Analysis(object):
 	def _check_pred_dir_exists(self, paths):
 		# Create a list of tuples (path, has_predictions)
 		path_info = [(path, os.path.isdir(os.path.join(path, 'predictions'))) for path in paths]
-
 		# Filter paths based on whether they have 'predictions'
 		paths_with_predictions = list(filter(lambda x: x[1], path_info))
 		paths_without_predictions = list(filter(lambda x: not x[1], path_info))
@@ -26,7 +25,7 @@ class Analysis(object):
 
 	def _check_if_causal_exists(self, paths):
 		with_causal = [os.path.join(path[0], "predictions") for path in paths 
-			if os.path.exists(os.path.join(path[0], "predictions", "q_causal_LAST_acc.json"))]
+			if os.path.exists(os.path.join(path[0], "predictions", "q_causal_acc.json"))]
 		return with_causal
 
 	def parse_acc_json(self, json_path):
@@ -42,7 +41,7 @@ class Analysis(object):
 		for path in paths:
 			conf_dict = {}
 			for task in All_task:
-				json_path = os.path.join(path, f"{task}_LAST_acc.json")
+				json_path = os.path.join(path, f"{task}_acc.json")
 				conf_dict[task]=self.parse_acc_json(json_path)
 			model_name = os.path.dirname(path).split('/')[-1]
 			target_path = os.path.join('metrics', f'{model_name}.csv')
@@ -52,8 +51,9 @@ class Analysis(object):
 		print("Done")
 
 if __name__ == "__main__":
-	savepath = "/home/deepayan.das/projects/VQACL/VL-T5/snap"
-	model_names = os.listdir(savepath)
+	savepath = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/VL-T5/snap"
+	model_names = ['naiveblip_cl_syn_filtered']
+	# model_names = os.listdir(savepath)
 	f = lambda x: os.path.join(savepath, x)
 	model_paths = list(map(f, model_names))
 	Analysis(model_paths)

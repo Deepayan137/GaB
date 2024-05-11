@@ -2,6 +2,7 @@ import torch.backends.cudnn as cudnn
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+
 import os
 import collections
 from pathlib import Path
@@ -296,7 +297,7 @@ class TrainerBase(object):
                 state_dict_to_save["model"] = {
                 'query_tokens': actual_model.query_tokens.data, 
                 'language_projection_answers':actual_model.language_projection_answers.state_dict(),
-                'language_projection_questions'::actual_model.language_projection_questions.state_dict()}
+                'language_projection_questions':actual_model.language_projection_questions.state_dict()}
             elif self.args.ft_layers == 'last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 state_dict_to_save["model"] = {
@@ -312,9 +313,7 @@ class TrainerBase(object):
 
 
     def load(self, path, loc=None):
-        if loc is None and hasattr(self.args, 'gpu'):
-            loc = f'cuda:{self.args.gpu}'
-
+        loc = 'cuda' if torch.cuda.is_available() else 'cpu'
         if not path.endswith('.pth'):
             path = "%s.pth" % path
         checkpoint = torch.load(path, map_location=loc)
@@ -328,14 +327,18 @@ class TrainerBase(object):
                 actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
             elif self.args.ft_layers == 'query_tokens':
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-                actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
-                actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
+                if 'language_projection_answers' in checkpoint['model'] and 'language_projection_questions' in checkpoint['model']:
+                    actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
+                    actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
+                else:
+                    actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
+                
             if self.args.ft_layers =='last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
                 actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
                 actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-            self.optim.load_state_dict(checkpoint["optimizer"])
+            # self.optim.load_state_dict(checkpoint["optimizer"])
         elif 't5' in self.args.backbone:
             actual_model.load_state_dict(checkpoint["model"])
         if self.args.blip_model != "naiveblip":

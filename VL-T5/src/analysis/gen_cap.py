@@ -6,32 +6,47 @@ import torch.nn as nn
 from transformers import T5Config, BartConfig, Blip2Config
 from transformers import AutoProcessor
 from torch.utils.data import DataLoader, Dataset
-from src.vqa_data_blip import VQADataset, VQAFineTuneDataset, FilteredVQAFineTuneDataset
-# from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
+from src.vqa_data_blip import VQADataset, VQAFineTuneDataset
 from transformers import AutoProcessor
+from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
 from PIL import Image
 from src.vqa_model_blip import NaiveBLIP2
 from src.param import parse_args
 from collections import OrderedDict
-
+import shutil
 import sys
 from tqdm import *
 from Question_type import *
 import os
 
 from src.param import parse_args
-
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 nlp = spacy.load("en_core_web_sm")
-
 device = 'cuda'
 args = parse_args()
+
 def get_model(model_name):
 	processor = AutoProcessor.from_pretrained(model_name)
-	
+	device = "cuda" if torch.cuda.is_available() else "cpu"
 	config = Blip2Config.from_pretrained(model_name)
-	model = NaiveBLIP2.from_pretrained(model_name, config=config)
+	model = Blip2ForConditionalGeneration.from_pretrained(model_name, config=config)
 	model.to(device)
+	# if os.path.exists(ckpt_path):
+	# 	checkpoint = torch.load(ckpt_path, map_location=device)
+	# 	model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+	# 	model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
 	return model, processor
+
+def copy_val_files(source, dest_root):
+	for task in All_task:
+		source_file = '../datasets/vqa/Partition_Q_V2/karpathy_test_' + f'{task}.json'
+		dest_file = os.path.join(dest_root, f'karpathy_test_{task}.json')
+		if not os.path.exists(dest_file):
+			shutil.copyfile(source_file, dest_file)
+		else:
+			print("File already present, no need to copy")
+	print("Complete...")
+
 
 def create_rehearsal_memory(dest_root):
 	for task_idx in range(len(All_task)):
@@ -63,7 +78,7 @@ def create_rehearsal_memory(dest_root):
 			with open(dest, 'w') as f:
 				json.dump(All_examplar, f, indent=4)
 
-def inference_qa(image_path, question, max_new_tokens=2):
+def inference_qa(image_path, max_new_tokens=20):
 	image = Image.open(image_path).convert("RGB")
 	inputs = processor(image, text=question, 
 		truncation=True, return_tensors="pt").to(device)
@@ -71,14 +86,14 @@ def inference_qa(image_path, question, max_new_tokens=2):
 	pixel_values = inputs["pixel_values"].to(device)
 	input_ids = inputs["input_ids"].to(device)
 	# target_ids = target_ids.to(device)
-	output = model.generate(**inputs, max_new_tokens=50, num_beams=5, num_return_sequences=3)
+	output = model.get_questions(inputs, max_new_tokens=50, num_beams=5, num_return_sequences=3)
 	
-	pred_ans =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
-	return pred_ans
+	pred_question =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
+	return pred_question
 
 def inference_cap(images, prompts=None, temp=0.7):
-	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True, max_length=50).to(device)
-	generated_ids = model.generate(**inputs, max_new_tokens=50, num_beams=5, temperature=temp, do_sample=True)
+	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True).to(device)
+	generated_ids = model.generate(**inputs, max_new_tokens=56, num_beams=5, temperature=temp, do_sample=True)
 	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 	if prompts:
 		empty_indices = [index for index, cap in enumerate(captions) if cap.strip() == ""]
@@ -117,27 +132,25 @@ def extract_features(sentence):
 	return features
 				
 
+
 if __name__ == "__main__":
 	path = f"../datasets/vqa/Partition_Q_V2/"
 	dest_root = f"../datasets/vqa/Partition_Q_V2_subset_new"
 	os.makedirs(dest_root, exist_ok=True)
 	root = f"../datasets/COCO/"
-	create_rehearsal_memory(dest_root)
+	copy_val_files(path, dest_root)
+	# create_rehearsal_memory(dest_root)
 	model_name = "Salesforce/blip2-opt-2.7b"
 	model, processor = get_model(model_name)
-	ckpt_path = 'snap/naiveblip_cl_qtoken'
-	if os.path.exists(ckpt_path):
-		checkpoint = torch.load(path, map_location=None)
-		model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-		model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
 
 	img_paths = []
 	task2id = {All_task[i]:i for i in range(len(All_task))}
 	id2task = {v:k for k, v in task2id.items()}
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
 	task = All_task[task_idx]
-	if task_idx > 0:
-		fname = f"karpathy_train_{task}.json"
+	# task_idx = 0
+	if task_idx > -1:
+		fname = f"karpathy_test_{task}.json"
 		source = os.path.join(path, fname)
 		dest = os.path.join(dest_root, fname)
 		with open(dest, 'r') as f:

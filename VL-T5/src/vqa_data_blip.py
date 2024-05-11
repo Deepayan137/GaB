@@ -20,9 +20,6 @@ import re
 from torch.utils.data.distributed import DistributedSampler
 
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
-
-
-from src.instruction import Instructions, No_Instructions
 sys.path.append("..")
 from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_task_list
 
@@ -119,7 +116,7 @@ class VQAFineTuneDataset(Dataset):
         self.n_boxes = args.n_boxes
         data_dir = "../datasets/COCO"
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
-        self.instruction = Instructions[task]
+        # self.instruction = Instructions[task]
         self.task = task
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
@@ -175,10 +172,6 @@ class VQAFineTuneDataset(Dataset):
                 truncation=True, return_tensors="pt")
             out_dict['input_ids'] = inputs["input_ids"]
             out_dict['input_length'] = len(inputs["input_ids"][0])
-            caption = f"{sent.lower()} {answer.lower()}"
-            cap_ids = self.processor.tokenizer.encode(caption, max_length=20, truncation=True)
-            out_dict['cap_ids'] = torch.LongTensor(cap_ids)
-            out_dict['cap_length'] = len(cap_ids)
             out_dict['pixel_values'] = inputs['pixel_values']
 
         question_id = datum['question_id']
@@ -236,7 +229,14 @@ class VQAFineTuneDataset(Dataset):
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
-
+                if 'sent' in datum:
+                    sent = datum['sent']
+                elif 'question' in datum:
+                    sent = datum['question']
+                caption = f"{sent.lower()} {answer.lower()}"
+                cap_ids = self.processor.tokenizer.encode(caption, max_length=20, truncation=True)
+                out_dict['cap_ids'] = torch.LongTensor(cap_ids)
+                out_dict['cap_length'] = len(cap_ids)
                 
                 target_ids = self.processor.tokenizer.encode(answer, 
                     max_length=10, truncation=True)
@@ -457,17 +457,17 @@ class VQAFineTuneDataset_memory(Dataset):
                 raise "image path does not exists"
             
             ###### Text #####
-            # caption = datum['caption']
             if self.args.use_gen_data:
-                for key in datum.keys():
-                    if key.startswith("Q_"):
-                        sent = datum[key][0]
+                for key, value in datum.items():
+                    if key.startswith("Q_") and isinstance(value, list):
+                        sent = value[0]
+                    elif key.startswith("Q_") and isinstance(value, str):
+                        sent = value
             else:
                 if 'sent' in datum:
                     sent = datum['sent']
                 elif 'question' in datum:
                     sent = datum['question']
-
             sent = f"Question: {sent} Answer:"
             inputs = self.processor(image, text=sent, max_length=20, 
                 truncation=True, return_tensors="pt")
@@ -521,9 +521,19 @@ class VQAFineTuneDataset_memory(Dataset):
 
             else:
                 if self.args.use_gen_data:
-                    for key in datum.keys():
-                        if key.startswith("A_"):
-                            answer = datum[key][0]
+                    potential_answer= None
+                    for key, value in datum.items():
+                        if self.args.self_train and key.startswith("A_self"):
+                            potential_answer = value
+                        elif (not self.args.self_train and key.startswith("A_cap")) or  key.startswith("A_"):
+                            potential_answer = value
+    
+                    if isinstance(potential_answer, list) and potential_answer:
+                        answer = potential_answer[0]
+                    elif isinstance(potential_answer, str) and potential_answer:
+                        answer = potential_answer
+                    else:
+                        answer = "not sure"
                     score = 0.0
                     answers = [answer]
                 else:

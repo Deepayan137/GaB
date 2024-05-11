@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import random
-import wandb
+# import wandb
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -10,6 +10,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoProcessor
+from torch.optim.lr_scheduler import MultiStepLR
 import collections
 from pathlib import Path
 from packaging import version
@@ -25,15 +26,15 @@ from param import parse_args
 from utils import load_state_dict, LossMeter, set_global_logging_level
 
 from trainer_base import TrainerBase
-
+os.environ['WANDB_MODE'] = 'offline'
 sys.path.insert(0, '../')
 from Question_type import Sg_task, show_results_matrix
 
 def cycle(iterable):
-    # iterate with shuffling
-    while True:
-        for i in iterable:
-            yield i
+	# iterate with shuffling
+	while True:
+		for i in iterable:
+			yield i
 
 class Trainer(TrainerBase):
 	def __init__(self, args, sg_Ours, train_loader=None, val_loader=None, test_loader=None, train=True):
@@ -87,7 +88,13 @@ class Trainer(TrainerBase):
 		if self.regularizer is not None:
 			self.regularizer = self.regularizer.to(args.gpu)
 		if 'blip' in self.args.backbone:
-			self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+			# self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+			self.optim = torch.optim.AdamW(
+				params=self.model.language_projection_answers.parameters(),
+				lr=1e-4,  # Example learning rate
+				weight_decay=self.args.warmup_ratio  # Example weight decay
+			)
+			self.lr_scheduler = MultiStepLR(self.optim, milestones=[4, 9], gamma=0.1)
 		if self.verbose:
 			print(f'It took {time() - start:.1f}s')
 		self.iftrain = train
@@ -99,15 +106,43 @@ class Trainer(TrainerBase):
 		self.task_total_num = torch.zeros(len(self.task_list))
 		self.M = args.m_size
 		self.Examplar_set = {}
-	
-	def _load_checkpoint(self, checkpoint_name, latest_task_idx):
-		checkpoint_model = f'{self.args.output}/{checkpoint_name}_BEST'
-		for idx, task in enumerate(self.task_list):
-			if idx <= latest_task_idx:
-				self.task_iftrain[task] = 1
-		self.load(checkpoint_model)
-		print(f'Success to load the checkpoint from the task {checkpoint_name}')
+		# print("Keeping the base model weights handy")
+		# base_path = 'snap/blip_base/base.pth'
+		# loc = "cuda" if torch.cuda.is_available() else "cpu"
+		# base_ckpt = torch.load(base_path, map_location=loc)
+		# self.base_qtokens = base_ckpt['model']['query_tokens']
+		# self.base_projection = base_ckpt['model']['language_projection']
 
+	def _interpolate_with_base(self):
+		print("Performing Model Averaging with Base Blip Model")
+		alpha = 0.5
+		with torch.no_grad():
+			self.model.query_tokens.data = (1 - alpha) * self.base_qtokens.data + alpha * self.model.query_tokens.data
+			self.model.language_projection_answers.weight.data = (1 - alpha) * self.base_projection['weight'].data + alpha * self.model.language_projection_answers.weight.data
+			self.model.language_projection_answers.bias.data = (1 - alpha) * self.base_projection['bias'].data + alpha * self.model.language_projection_answers.bias.data
+	
+	def _interpolate_with_last(self, task_idx):
+		alpha = 0.5
+		if task_idx == 0:
+			print("Although, interpolate with last but since only one task before me, thus")
+			self._interpolate_with_base()
+		elif task_idx > 0:
+			target_task = Sg_task["function"]["oarlks"][task_idx - 1]
+			print(f"Model averaging with {target_task}")
+			self._load_checkpoint(task_idx)
+			with torch.no_grad():
+				self.model.query_tokens.data = (1 - alpha) * self.last_task_qtokens.data + alpha * self.model.query_tokens.data
+				self.model.language_projection_answers.weight.data = (1 - alpha) * self.last_task_projection['weight'].data + alpha * self.model.language_projection_answers.weight.data
+				self.model.language_projection_answers.bias.data = (1 - alpha) * self.last_task_projection['bias'].data + alpha * self.model.language_projection_answers.bias.data
+
+	def _load_checkpoint(self, task_idx):
+		ckpt_path = f'{self.args.output}/{Sg_task["function"]["oarlks"][task_idx - 1]}_AVG_LAST.pth'
+		loc = "cuda" if torch.cuda.is_available() else "cpu"
+		last_task_ckpt = torch.load(ckpt_path, map_location=loc)
+		self.last_task_qtokens = last_task_ckpt['model']['query_tokens']
+		self.last_task_projection = last_task_ckpt['model']['language_projection_answers']
+		print(f'Successfully loaded the checkpoint from task {Sg_task["function"]["oarlks"][task_idx - 1]}')
+	
 	def train(self, load=False):
 		if 'blip' in args.backbone:
 			from sgvqa_data_blip import get_loader, get_loader_test, get_loader_memory
@@ -119,12 +154,12 @@ class Trainer(TrainerBase):
 			latest_task_idx = self.task_list.index(latest_task)
 			self.load(self.args.checkpoint)
 			# self._load_checkpoint(latest_task, latest_task_idx)
-		run = wandb.init(
-		    # Set the project where this run will be logged
-		    project="scenevqa_15",
-		    # Track hyperparameters and run metadata
-		    config=vars(args)
-		)
+		# run = wandb.init(
+		#   # Set the project where this run will be logged
+		#   project="scenevqa_15",
+		#   # Track hyperparameters and run metadata
+		#   config=vars(args)
+		# )
 		task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
 		id2task = {v:k for k, v in task2id.items()}
 		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -166,14 +201,11 @@ class Trainer(TrainerBase):
 			# Load the data
 			print("#Loading ", task)
 			print(f'Building train loader at GPU {args.gpu}')
-			if task != "scenetext":
-				batch_size = args.batch_size
-			else:
-				batch_size = 1
+			
 			train_loader, total_num_Q = get_loader(
 				args,
 				split=args.train, scenario=args.scenario, 
-				batch_size=batch_size,
+				batch_size= args.batch_size,
 				workers=args.num_workers,
 				task=task,
 			)
@@ -229,7 +261,7 @@ class Trainer(TrainerBase):
 			# score_dict = self.evaluate(self.val_loader_cate, task)
 			valid_score_raw_best = 0.0
 			patience_counter = 0
-			patience = 5
+			patience = 6
 			for epoch in range(start_epoch, self.args.epochs):
 				if self.start_epoch is not None:
 					epoch += self.start_epoch
@@ -272,19 +304,20 @@ class Trainer(TrainerBase):
 				if args.show_train_progress:
 					pbar.close()
 				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
-				score_dict = self.evaluate(self.val_loader, task)
-				valid_score_raw = score_dict['overall']
-				wandb.log({
-					f"val_accuracy_{task}": valid_score_raw, 
-					f"train_loss_{task}": loss_meter.val})
-				log_str = ''
-				log_str += "\nValid Raw %0.2f" % (valid_score_raw)
-				print(log_str)
-				if valid_score_raw > valid_score_raw_best:
-					valid_score_raw_best = valid_score_raw
-					patience_counter = 0  # Reset the patience counter
-					print("Saving Best")
-					self.save(task + "_BEST")
+				if (epoch+1) % 5 == 0:
+					score_dict = self.evaluate(self.val_loader, task)
+					valid_score_raw = score_dict['overall']
+					# wandb.log({
+					#   f"val_accuracy_{task}": valid_score_raw, 
+					#   f"train_loss_{task}": loss_meter.val})
+					log_str = ''
+					log_str += "\nValid Raw %0.2f" % (valid_score_raw)
+					print(log_str)
+					if valid_score_raw > valid_score_raw_best:
+						valid_score_raw_best = valid_score_raw
+						patience_counter = 0  # Reset the patience counter
+						print("Saving Best")
+						self.save(task + "_BEST")
 				else:
 					patience_counter += 1  # Increment the patience counter
 					print(f"No improvement for {patience_counter} epochs.")
@@ -292,11 +325,16 @@ class Trainer(TrainerBase):
 				if patience_counter > patience:
 					print("Early stopping triggered.")
 					print("Saving Last")
-					self.save(task + "_LAST")
-					break  # Break out of the training loop
-		print("Saving Last")
-		self.save(task + "_LAST")
-
+					# self.save(task + "_LAST")
+					# break  # Break out of the training loop
+			print("Saving Last")
+			self.save(task + "_LAST")
+			# if args.avg_with_base:
+			#   self._interpolate_with_base()
+			#   self.save(task + "_AVG_BASE")
+			# elif args.avg_with_last:
+			#   self._interpolate_with_last(task_idx)
+			#   self.save(task + "_AVG_LAST")
 	def train_step(self, batch, epoch_results, task_idx, each_memory):
 		self.optim.zero_grad(set_to_none=True)
 		results = self.model.train_step(batch, task_idx)
@@ -345,10 +383,11 @@ class Trainer(TrainerBase):
 		if self.args.checkpoint != 'None':
 			last_path = os.path.join(self.args.checkpoint)
 			print(f"The last path is {last_path}")
+			import pdb;pdb.set_trace()
 			if os.path.exists(last_path + '.pth') and not self.args.now_train:
 				self.load(last_path)
 				task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:1])
-				self.test(task)
+				self.test_single(task)
 			else:
 				print("No model found")
 		else:
@@ -488,16 +527,22 @@ def main_worker(args):
 
 	else:
 		if args.checkpoint!='None':
+			# task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
+			# task = Sg_task['function']['oarlks'][task_idx]
+			# if (args.output).endswith('base'):
+			# 	args.checkpoint = f'{args.output}/{task}_AVG_BASE'
+			# else:
+			# 	args.checkpoint = f'{args.output}/{task}_AVG_LAST'
 			trainer.Test(load=True)
 		else:
 			trainer.Test(load=False)
 
 		try:
 			print('#------------------ Final Performance --------------------#')
-			print(trainer.result_matrix['q_causal'])
+			print(trainer.result_matrix['scenetext'])
 			acc = 0
-			for key in trainer.result_matrix['q_causal']:
-				acc += trainer.result_matrix['q_causal'][key]
+			for key in trainer.result_matrix['scenetext']:
+				acc += trainer.result_matrix['scenetext'][key]
 			print('AP:', round(acc/10, 4))
 
 		except:

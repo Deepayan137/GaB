@@ -30,6 +30,10 @@ import os
 import signal
 
 os.environ['WANDB_MODE'] = 'offline'
+# Disable tokenizers parallelism
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Your code follows here...
 
 def __handle_signal(signum, frame):
     raise TerminationError()
@@ -126,17 +130,19 @@ class Trainer(TrainerBase):
         if self.verbose:
             from time import time
             start = time()
+        #self.args.gpu
+        device = 'cuda'
         self.model = self.model.to(args.gpu)
         if self.regularizer is not None:
             self.regularizer = self.regularizer.to(args.gpu)
         if 'blip' in self.args.backbone:
             # self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-            self.optim = optim.AdamW(
+            self.optim = torch.optim.AdamW(
                 params=self.model.language_projection_answers.parameters(),
                 lr=1e-4,  # Example learning rate
                 weight_decay=self.args.warmup_ratio  # Example weight decay
             )
-            self.optim_question = optim.AdamW(
+            self.optim_question = torch.optim.AdamW(
                 params=self.model.language_projection_questions.parameters(),
                 lr=1e-5,  # Potentially different learning rate for question generation
                 weight_decay=self.args.warmup_ratio  # Using same weight decay as an example
@@ -184,12 +190,12 @@ class Trainer(TrainerBase):
             latest_task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:2])
             latest_task_idx = self.task_list.index(latest_task)
             self._load_checkpoint(latest_task, latest_task_idx)
-        run = wandb.init(
-            # Set the project where this run will be logged
-            project="vqacl",
-            # Track hyperparameters and run metadata
-            config=vars(args)
-        )
+        # run = wandb.init(
+        #     # Set the project where this run will be logged
+        #     project="vqacl",
+        #     # Track hyperparameters and run metadata
+        #     config=vars(args)
+        # )
         task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
         id2task = {v:k for k, v in task2id.items()}
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -211,8 +217,12 @@ class Trainer(TrainerBase):
                 if args.memory:
                     if task_idx >0:
                         each_memory = int(self.M / task_idx)
-                        All_examplar, self.Examplar_set = get_memory_data(args, task_idx, each_memory, self.Examplar_set)
+                        All_examplar, self.Examplar_set = get_memory_data(args, task_idx, each_memory, self.Examplar_set, self.model, self.processor)
                         print("# The size of the cate Memory:", len(All_examplar))
+                        if args.use_gen_data and args.self_train:
+                            print("The answers from captioning model will be used to train the model")
+                        elif args.use_gen_data and not args.self_train:
+                            print("Pseudo answers from cl finetuned model will be used")
                     else:
                         All_examplar = []
                         each_memory = 0
@@ -284,6 +294,7 @@ class Trainer(TrainerBase):
                 # if self.verbose:
                 loss_meter = LossMeter()
                 loss_meter_mem = LossMeter()
+                loss_meter_ques = LossMeter()
                 best_valid = 0.
                 best_epoch = 0
                 if self.args.distributed:
@@ -300,7 +311,6 @@ class Trainer(TrainerBase):
                     self.train_loader_cate = train_loader[cateGroup]
                     self.val_loader_cate = val_loader[cateGroup]
                     self.memory_loader_cate = memory_loader[cateGroup]
-                    self.question_loader_cate = train_loader_questions[cateGroup]
                     # Optimizer
                     if self.iftrain:
                         if len(self.memory_loader_cate.dataset) > 0:
@@ -365,8 +375,8 @@ class Trainer(TrainerBase):
                             else:
                                 # Non-distributed, business as usual
                                 loss_meter.update(results['loss'].item())
-
-                            desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f}'
+                                loss_meter_ques.update(results['loss_cap'].item())
+                            desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} | Loss Ques {loss_meter_ques.val:.4f}'
                             if mem_batch:
                                 if self.args.distributed:
                                     distributed_mem_loss = 0.
@@ -392,16 +402,15 @@ class Trainer(TrainerBase):
                             pbar.close()
                         
                         if args.gpu == 0:
-                            print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
+                            print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}, Loss_Ques: {loss_meter_ques.val}")
                             score_dict = self.evaluate(self.val_loader_cate, task)
-    
-                        
                             valid_score = score_dict['topk_score'] * 100.
                             valid_score_raw = score_dict['overall']
                             log_str = ''
                             log_str += "\nGroup %s Epoch %d: Valid Raw %0.2f Topk %0.2f" % (cateGroup, epoch, valid_score_raw, valid_score)
-                            wandb.log({f"val_accuracy_{task}": valid_score_raw, 
-                                    f"train_loss_{task}": loss_meter.val})
+                            print(log_str)
+                            # wandb.log({f"val_accuracy_{task}": valid_score_raw, 
+                            #         f"train_loss_{task}": loss_meter.val, f"train_loss_question_{task}":loss_meter_ques.val})
                         if valid_score_raw > valid_score_raw_best:
                             valid_score_raw_best = valid_score_raw
                             patience_counter = 0  # Reset the patience counter
@@ -445,7 +454,9 @@ class Trainer(TrainerBase):
         if 'loss_memory_new' in results:
             (loss_memory_Q_new, loss_memory_V_new) = results['loss_memory_new']
             loss = loss + lambda_Q_new * loss_memory_Q_new + lambda_V_new * loss_memory_V_new
-
+        if 'loss_cap' in results:
+            loss_cap = results['loss_cap']
+            loss = loss + loss_cap
         if self.regularizer is not None:
             cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
             loss += cl_reg
@@ -477,7 +488,7 @@ class Trainer(TrainerBase):
             self.scaler.update()
         else:  # this
             self.optim.step()
-
+            self.optim_question.step()
         if self.lr_scheduler:
             self.lr_scheduler.step()
         for param in self.model.parameters():
@@ -632,10 +643,9 @@ class Trainer(TrainerBase):
         pred_dir = os.path.join(self.args.output, 'predictions')
         if not os.path.exists(pred_dir):
             os.makedirs(pred_dir, exist_ok=True)
-        fname = os.path.basename(self.args.output)
-        with open(f"{pred_dir}/{fname}_acc.json", 'w') as f:
+        with open(f"{pred_dir}/{task}_acc.json", 'w') as f:
             json.dump(mega_log_dict, f, indent=4)
-        with open(f"{pred_dir}/{fname}_gt_pred.json", 'w') as f:
+        with open(f"{pred_dir}/{task}_gt_pred.json", 'w') as f:
             json.dump(predict_gt_dict, f, indent=4)
 
     def compile_preds(self, quesid2ans, quesid2gt):
@@ -646,13 +656,15 @@ class Trainer(TrainerBase):
             gt_pred_pairs[key] = [img_id, question, pred, gt]
         return gt_pred_pairs
 
+    
     def predict(self, loader, task, dump_path=None):
         self.model.eval()
         ans_list = []
         with torch.no_grad():
             quesid2ans, quesid2gt = {}, {}
             print("Predicting")
-            pbar = tqdm(total=len(loader), ncols=120, desc="Prediction---")
+            if args.show_train_progress:
+                pbar = tqdm(total=len(loader), ncols=120, desc="Prediction---")
             for i, batch in enumerate(loader):
                 if self.args.distributed:
                     results = self.model.module.test_step(batch, task)
@@ -666,8 +678,10 @@ class Trainer(TrainerBase):
                     quesid2ans[qid] = ans
                     quesid2gt[qid] = batch['img_id'][0], \
                         batch['sent'][0], batch['answers'][0]
-                pbar.update(1)
-            pbar.close()
+                if args.show_train_progress:
+                    pbar.update(1)
+            if args.show_train_progress:
+                pbar.close()
         # print(ans_list[:10])
         if self.args.distributed:
             dist.barrier()
@@ -691,7 +705,6 @@ class Trainer(TrainerBase):
             acc_dict = evaluator.evaluate_raw(quesid2ans)
             topk_score = evaluator.evaluate(quesid2ans)
             acc_dict['topk_score'] = topk_score
-
             return acc_dict
 
 def main_worker(gpu, args):
@@ -713,7 +726,21 @@ def main_worker(gpu, args):
     else:
         trainer = Trainer(args, coco_Ours, train=True)
     if args.now_train:
-        if args.checkpoint != 'None':
+        # List all files in the output directory and filter out non-checkpoint files
+        ckpts = [file for file in os.listdir(args.output) if file.endswith(".pth") and not os.path.isdir(os.path.join(args.output, file))]
+
+        # Initialize checkpoint variable
+        args.checkpoint = None
+
+        # Find the latest checkpoint that matches the latest task
+        for t in reversed(All_task):  # No need to slice the list, just reverse iterate
+            if t in ckpts:
+                print(f"Latest checkpoint found @ {args.checkpoint}")
+                args.checkpoint = t
+                break
+
+        # If a checkpoint is found, load it; otherwise, start training without loading
+        if args.checkpoint:
             trainer.train(load=True)
         else:
             trainer.train(load=False)
@@ -735,6 +762,9 @@ def main_worker(gpu, args):
 
     else:
         if args.checkpoint!='None':
+            task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
+            task = All_task[task_idx]
+            args.checkpoint = f'{args.output}/{task}_LAST'
             trainer.Test(load=True)
         else:
             trainer.Test(load=False)

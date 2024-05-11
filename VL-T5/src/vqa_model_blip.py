@@ -10,6 +10,12 @@ from transformers import AutoProcessor
 from src.blip2.modeling_blip import NaiveBlip2VQACL
 from src.blip2.modeling_blip_vqacl import Blip2VQACL
 
+import os
+# Disable tokenizers parallelism
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Your code follows here...
+
 class BLIP2Prototype(Blip2VQACL):
     def __init__(self, config, num_answers=None, label2ans=None, ft_layers="query_tokens"):
         super().__init__(config)
@@ -136,12 +142,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         pixel_values = batch['pixel_values'].to(device)
         query_outputs, vision_outputs = self.get_features(pixel_values)
         max_new_tokens = 10
-        output = self.generate(
-            query_outputs=query_outputs, 
-            vision_outputs=vision_outputs, 
-            max_new_tokens=max_new_tokens, 
-            repetition_penalty=1.2,
-            mode='questions')
+        output = self.generate(query_outputs=query_outputs, vision_outputs=vision_outputs, max_new_tokens=max_new_tokens, repetition_penalty=1.2, mode='questions')
         result = {}
         result['token_ids'] = output
         result['questions'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
@@ -156,7 +157,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         input_ids = batch['input_ids'].to(device) # bs, 20
        
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
-        max_new_tokens = 2
+        max_new_tokens = 1
         output = self.generate(
             query_outputs=query_outputs, 
             vision_outputs=vision_outputs, 
@@ -167,40 +168,40 @@ class NaiveBLIP2(NaiveBlip2VQACL):
             mode='answers')
         result = {}
         result['token_ids'] = output
-        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
-
+        result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True)
         return result
 
     def train_step(self, batch, current_task_id):
         device = next(self.parameters()).device
         pixel_values = batch['pixel_values'].to(device) # bs, 36, 2048
-        query_outputs, vision_outputs = self.model.get_features(pixel_values)
+        query_outputs, vision_outputs = self.get_features(pixel_values)
         input_ids = batch['input_ids'].to(device) # bs, 20
-        lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        if 'target_ids' in batch:
+            lm_labels = batch["target_ids"].to(device) #[bs, 5]
+        else:
+            lm_labels = None
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
         
         output = self(
             query_outputs=query_outputs,
             vision_outputs=vision_outputs,
             input_ids=input_ids,
-            pixel_values=pixel_values,
             attention_mask=attention_mask,
             labels=lm_labels,
             mode='answers')
-        assert 'loss' in output
-        B, L = lm_labels.size()
-        loss = output['loss'] # 400 (bs*5)
-        result = {
-            'loss': loss
-            }
-        if cap_ids in batch:
+        result = {}
+        if 'loss' in output:
+            loss = output['loss'] # 400 (bs*5)
+            result = {
+                'loss': loss
+                }
+        if 'cap_ids' in batch:
             cap_ids = batch['cap_ids'].to(device)
-            cap_labels = captions
+            cap_labels = cap_ids
             output_cap = self(
                 query_outputs=query_outputs,
                 vision_outputs=vision_outputs,
                 input_ids=cap_ids,
-                pixel_values=pixel_values,
                 labels=cap_labels,
                 mode='questions')
 
@@ -209,7 +210,6 @@ class NaiveBLIP2(NaiveBlip2VQACL):
             result['loss_cap'] = loss_cap
 
         result['logits'] = output['logits']
-        result['BL'] = (B, L)
         if 'loss_memory' in output:
             result['loss_memory'] = output['loss_memory']  #(output['loss_memory_Q'], output['loss_memory_V'])
         if 'loss_memory_new' in output:
