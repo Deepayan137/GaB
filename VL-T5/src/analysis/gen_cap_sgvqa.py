@@ -18,6 +18,7 @@ import sys
 from tqdm import *
 from Question_type import *
 import os
+import random
 
 from src.param import parse_args
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -136,8 +137,8 @@ def extract_features(sentence):
 
 
 if __name__ == "__main__":
-	path = f"../datasets/vqa/Partition_Q_V2/"
-	dest_root = f"../datasets/vqa/Partition_Q_V2_subset_new"
+	path = f"../datasets/npy/"
+	dest_root = f"../datasets/vqa/npy_cap"
 	os.makedirs(dest_root, exist_ok=True)
 	copy_val_files(path, dest_root)
 	# create_rehearsal_memory(dest_root)
@@ -151,12 +152,12 @@ if __name__ == "__main__":
 	task = All_task[task_idx]
 	# task_idx = 0
 	if task_idx > -1:
-		fname = f"karpathy_test_{task}.json"
+		fname = f"fcl_mmf_{task}_train.json"
 		source = os.path.join(path, fname)
 		dest = os.path.join(dest_root, fname)
-		with open(dest, 'r') as f:
-			data_subset = json.load(f)
-			
+		
+		data_subset = np.load()
+		random.shuffle(data_subset)
 		new_data = []
 		count=0
 		for _d in tqdm(data_subset):

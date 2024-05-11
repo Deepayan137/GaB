@@ -157,7 +157,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         input_ids = batch['input_ids'].to(device) # bs, 20
        
         attention_mask = (input_ids != self.processor.tokenizer.pad_token_id).long().to(device)
-        max_new_tokens = 1
+        max_new_tokens = 2
         output = self.generate(
             query_outputs=query_outputs, 
             vision_outputs=vision_outputs, 

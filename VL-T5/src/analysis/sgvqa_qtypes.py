@@ -11,7 +11,7 @@ if __name__ == "__main__":
 	task_type = "function"
 	path = f"../datasets/npy/{task_type}/"
 	All_tasks = Sg_task[task_type]['oarlks']
-	task_idx = 0
+	task_idx = 3
 	for task in tqdm(All_tasks):
 		np_path = os.path.join(path, f"fcl_mmf_{task}_train.npy")
 		data = np.load(np_path, allow_pickle=True)
@@ -19,9 +19,11 @@ if __name__ == "__main__":
 		for data_dict in data:
 			qtype = data_dict['raw_question_type']
 			question = data_dict['question']
+			answer = data_dict['answer']
+			qa = f"{question}{answer}"
 			if str(qtype) not in qtype_dict:
 				qtype_dict[str(qtype)] = []
-			qtype_dict[str(qtype)].append(question)
+			qtype_dict[str(qtype)].append(qa)
 			if len(qtype_dict[str(qtype)]) >= 100:
 				break
 		with open(f"../datasets/npy/{task_type}/{task}_qtype.json", 'w') as f:
