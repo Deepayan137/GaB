@@ -119,12 +119,12 @@ class Trainer(TrainerBase):
 			latest_task_idx = self.task_list.index(latest_task)
 			self.load(self.args.checkpoint)
 			# self._load_checkpoint(latest_task, latest_task_idx)
-		run = wandb.init(
-		    # Set the project where this run will be logged
-		    project="scenevqa_15",
-		    # Track hyperparameters and run metadata
-		    config=vars(args)
-		)
+		# run = wandb.init(
+		#     # Set the project where this run will be logged
+		#     project="scenevqa_15",
+		#     # Track hyperparameters and run metadata
+		#     config=vars(args)
+		# )
 		task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
 		id2task = {v:k for k, v in task2id.items()}
 		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -274,9 +274,9 @@ class Trainer(TrainerBase):
 				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
 				score_dict = self.evaluate(self.val_loader, task)
 				valid_score_raw = score_dict['overall']
-				wandb.log({
-					f"val_accuracy_{task}": valid_score_raw, 
-					f"train_loss_{task}": loss_meter.val})
+				# wandb.log({
+				# 	f"val_accuracy_{task}": valid_score_raw, 
+				# 	f"train_loss_{task}": loss_meter.val})
 				log_str = ''
 				log_str += "\nValid Raw %0.2f" % (valid_score_raw)
 				print(log_str)
@@ -288,11 +288,10 @@ class Trainer(TrainerBase):
 				else:
 					patience_counter += 1  # Increment the patience counter
 					print(f"No improvement for {patience_counter} epochs.")
-
+				self.save(task + "_LAST")
 				if patience_counter > patience:
 					print("Early stopping triggered.")
 					print("Saving Last")
-					self.save(task + "_LAST")
 					break  # Break out of the training loop
 		print("Saving Last")
 		self.save(task + "_LAST")

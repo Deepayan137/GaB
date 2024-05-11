@@ -1,6 +1,5 @@
 # The name of experiment
-name=naiveblip_sgvqa_indivigual
-
+name=naiveblip_sgvqa_mem_new
 output=snap/$name
 
 
@@ -18,7 +17,7 @@ python src/sgvqa.py \
 --backbone 'Salesforce/blip2-opt-2.7b' \
 --output $output ${@:2} \
 --num_beams 5 \
---batch_size 1 \
+--batch_size 80 \
 --valid_batch_size 1 \
 --from_scratch \
 --optim 'blip_adamw' \
@@ -32,4 +31,4 @@ python src/sgvqa.py \
 --blip_model "naiveblip" \
 --scenario "function" \
 --memory \
---checkpoint "snap/naiveblip_sgvqa_mem/logical_BEST.pth"
+--checkpoint "snap/naiveblip_sgvqa_mem_new/object_BEST.pth"

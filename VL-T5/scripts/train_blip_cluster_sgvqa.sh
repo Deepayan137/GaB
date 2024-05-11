@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH --job-name=train_naiveblip_sgvqa_mem
-#SBATCH -p long-disi
+#SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
-#SBATCH -t 2-00:00:00
+#SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_naiveblip_sgvqa_mem.out
+#SBATCH -o logs/train_naiveblip_sgvqa_mem_new2.out
 #SBATCH --signal=B:SIGTERM@300
 
 
-name=naiveblip_sgvqa_mem
+name=naiveblip_sgvqa_mem_new
 
 output=snap/$name
 
@@ -50,4 +50,4 @@ python -m torch.distributed.launch \
         --blip_model "naiveblip" \
         --scenario "function" \
         --memory \
-        --checkpoint 'snap/naiveblip_sgvqa_mem/logical_BEST.pth'
+        --checkpoint 'snap/naiveblip_sgvqa_mem_new/object_BEST.pth'
