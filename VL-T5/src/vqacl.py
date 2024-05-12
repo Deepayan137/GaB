@@ -138,15 +138,15 @@ class Trainer(TrainerBase):
         if 'blip' in self.args.backbone:
             # self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
             self.optim = torch.optim.AdamW(
-                params=self.model.language_projection_answers.parameters(),
+                params=self.model.language_projection.parameters(),
                 lr=1e-4,  # Example learning rate
                 weight_decay=self.args.warmup_ratio  # Example weight decay
             )
-            self.optim_question = torch.optim.AdamW(
-                params=self.model.language_projection_questions.parameters(),
-                lr=1e-5,  # Potentially different learning rate for question generation
-                weight_decay=self.args.warmup_ratio  # Using same weight decay as an example
-            )
+            # self.optim_question = torch.optim.AdamW(
+            #     params=self.model.language_projection_questions.parameters(),
+            #     lr=1e-5,  # Potentially different learning rate for question generation
+            #     weight_decay=self.args.warmup_ratio  # Using same weight decay as an example
+            # )
             self.lr_scheduler = None
         if args.multiGPU:
             if args.distributed:

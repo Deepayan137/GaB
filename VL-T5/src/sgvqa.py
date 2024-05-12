@@ -90,11 +90,11 @@ class Trainer(TrainerBase):
 		if 'blip' in self.args.backbone:
 			# self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
 			self.optim = torch.optim.AdamW(
-				params=self.model.language_projection_answers.parameters(),
+				params=self.model.parameters(),
 				lr=1e-4,  # Example learning rate
 				weight_decay=self.args.warmup_ratio  # Example weight decay
 			)
-			self.lr_scheduler = MultiStepLR(self.optim, milestones=[4, 9], gamma=0.1)
+			# self.lr_scheduler = MultiStepLR(self.optim, milestones=[4, 9], gamma=0.1)
 		if self.verbose:
 			print(f'It took {time() - start:.1f}s')
 		self.iftrain = train
@@ -304,20 +304,20 @@ class Trainer(TrainerBase):
 				if args.show_train_progress:
 					pbar.close()
 				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
-				if (epoch+1) % 5 == 0:
-					score_dict = self.evaluate(self.val_loader, task)
-					valid_score_raw = score_dict['overall']
-					# wandb.log({
-					#   f"val_accuracy_{task}": valid_score_raw, 
-					#   f"train_loss_{task}": loss_meter.val})
-					log_str = ''
-					log_str += "\nValid Raw %0.2f" % (valid_score_raw)
-					print(log_str)
-					if valid_score_raw > valid_score_raw_best:
-						valid_score_raw_best = valid_score_raw
-						patience_counter = 0  # Reset the patience counter
-						print("Saving Best")
-						self.save(task + "_BEST")
+				# if (epoch+1) % 5 == 0:
+				score_dict = self.evaluate(self.val_loader, task)
+				valid_score_raw = score_dict['overall']
+				# wandb.log({
+				#   f"val_accuracy_{task}": valid_score_raw, 
+				#   f"train_loss_{task}": loss_meter.val})
+				log_str = ''
+				log_str += "\nValid Raw %0.2f" % (valid_score_raw)
+				print(log_str)
+				if valid_score_raw > valid_score_raw_best:
+					valid_score_raw_best = valid_score_raw
+					patience_counter = 0  # Reset the patience counter
+					print("Saving Best")
+					self.save(task + "_BEST")
 				else:
 					patience_counter += 1  # Increment the patience counter
 					print(f"No improvement for {patience_counter} epochs.")

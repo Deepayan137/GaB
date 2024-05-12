@@ -360,7 +360,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
             config.text_config.hidden_size)
 
-    @torch.no_grad()  # Ensure that gradients are not calculated for this operation
+    # @torch.no_grad()  # Ensure that gradients are not calculated for this operation
     def get_features(self, pixel_values):
         """
         Extract features from the vision model and the query transformer.
@@ -372,7 +372,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             torch.Tensor: The features extracted by the query transformer.
         """
         # Ensure the model is in eval mode, which is standard practice when not training
-        self.eval()
+        # self.eval()
 
         # Forward pass through the vision model to get image embeddings
         vision_outputs = self.vision_model(pixel_values=pixel_values, return_dict=True)
@@ -390,7 +390,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
 
 
         # Switch back to training mode
-        self.train()
+        # self.train()
 
         return query_outputs, vision_outputs
 

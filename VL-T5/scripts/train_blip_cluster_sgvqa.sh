@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_sgvqa_mem_new
+#SBATCH --job-name=train_naiveblip_sgvqa_mem
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
@@ -7,8 +7,8 @@
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
-#SBATCH -o logs/train_naiveblip_sgvqa_mem_new.out
-
+#SBATCH -o logs/train_naiveblip_sgvqa_mem_new6.out
+#SBATCH --signal=B:SIGTERM@300
 
 
 name=naiveblip_sgvqa_mem_new
@@ -21,7 +21,10 @@ export PYTHONPATH=$PYTHONPATH:./src
 trap "trap ' ' TERM INT; kill -TERM 0; wait" TERM INT
 
 #call your program here
-python src/sgvqa.py \
+python -m torch.distributed.launch \
+        --nproc_per_node=1 \
+        --master_port 62225 \
+        src/sgvqa.py \
         --train train \
         --valid val \
         --test val \
@@ -47,5 +50,4 @@ python src/sgvqa.py \
         --blip_model "naiveblip" \
         --scenario "function" \
         --memory \
-        --checkpoint 'snap/naiveblip_sgvqa_mem_new/object_BEST'
-
+        --checkpoint 'snap/naiveblip_sgvqa_mem_new/object_BEST.pth'
