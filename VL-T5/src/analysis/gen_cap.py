@@ -6,14 +6,14 @@ import torch.nn as nn
 from transformers import T5Config, BartConfig, Blip2Config
 from transformers import AutoProcessor
 from torch.utils.data import DataLoader, Dataset
-from src.vqa_data_blip import VQADataset, VQAFineTuneDataset, FilteredVQAFineTuneDataset
+from src.vqa_data_blip import VQADataset, VQAFineTuneDataset
 # from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
 from transformers import AutoProcessor
 from PIL import Image
 from src.vqa_model_blip import NaiveBLIP2
 from src.param import parse_args
 from collections import OrderedDict
-
+from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
 import sys
 from tqdm import *
 from Question_type import *
@@ -27,10 +27,14 @@ device = 'cuda'
 args = parse_args()
 def get_model(model_name):
 	processor = AutoProcessor.from_pretrained(model_name)
-	
+	device = "cuda" if torch.cuda.is_available() else "cpu"
 	config = Blip2Config.from_pretrained(model_name)
-	model = NaiveBLIP2.from_pretrained(model_name, config=config)
+	model = Blip2ForConditionalGeneration.from_pretrained(model_name, config=config)
 	model.to(device)
+	# if os.path.exists(ckpt_path):
+	# 	checkpoint = torch.load(ckpt_path, map_location=device)
+	# 	model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+	# 	model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
 	return model, processor
 
 def create_rehearsal_memory(dest_root):
@@ -122,14 +126,14 @@ if __name__ == "__main__":
 	dest_root = f"../datasets/vqa/Partition_Q_V2_subset_new"
 	os.makedirs(dest_root, exist_ok=True)
 	root = f"../datasets/COCO/"
-	create_rehearsal_memory(dest_root)
+	# create_rehearsal_memory(dest_root)
 	model_name = "Salesforce/blip2-opt-2.7b"
 	model, processor = get_model(model_name)
-	ckpt_path = 'snap/naiveblip_cl_qtoken'
-	if os.path.exists(ckpt_path):
-		checkpoint = torch.load(path, map_location=None)
-		model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-		model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+	# ckpt_path = 'snap/naiveblip_cl_qtoken'
+	# if os.path.exists(ckpt_path):
+	# 	checkpoint = torch.load(ckpt_path, map_location=None)
+	# 	model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+	# 	model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
 
 	img_paths = []
 	task2id = {All_task[i]:i for i in range(len(All_task))}
@@ -138,7 +142,7 @@ if __name__ == "__main__":
 	task = All_task[task_idx]
 	if task_idx > 0:
 		fname = f"karpathy_train_{task}.json"
-		source = os.path.join(path, fname)
+		# source = os.path.join(path, fname)
 		dest = os.path.join(dest_root, fname)
 		with open(dest, 'r') as f:
 			data_subset = json.load(f)

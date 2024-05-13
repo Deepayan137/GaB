@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH -t 24:00:00
-#SBATCH --array=0-1
-#SBATCH -o logs/gen_cap_%a.out  # %A for job ID, %a for array task ID
+#SBATCH --array=0-4
+#SBATCH -o logs/gen_cap_sgvqa_%a.out  # %A for job ID, %a for array task ID
 # # Load Python environment or any other dependencies
 # module load python/3.8  # Example module, adjust as per your setup
 

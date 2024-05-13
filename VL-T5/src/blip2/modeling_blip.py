@@ -354,7 +354,11 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             pool_size=pool_size, 
             prompt_pool=prompt_pool)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
-    
+        self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, 
+            config.text_config.hidden_size)
+
+        self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
+            config.text_config.hidden_size)
     # Ensure that gradients are not calculated for this operation
     def get_features(self, pixel_values):
         """
@@ -393,6 +397,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         query_outputs,
         vision_outputs,
         input_ids,
+        mode,
         attention_mask=None,
         decoder_input_ids=None,
         decoder_attention_mask=None,
@@ -404,7 +409,13 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         query_output = query_outputs[0]
         # step 3: use the language model, conditioned on the query outputs and the prompt
-        language_model_inputs = self.language_projection(query_output)
+        if mode == 'answers':
+            language_model_inputs = self.language_projection_answers(query_output)
+        elif mode == 'questions':
+            language_model_inputs = self.language_projection_questions(query_output)
+        else:
+            raise ValueError("Mode must be answers or questions ")
+        # language_model_inputs = self.language_projection(query_output)
         language_model_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
         )
@@ -471,6 +482,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         vision_outputs,
         input_ids=None,
         attention_mask=None,
+        mode='answers',
         **generate_kwargs):
 
         if hasattr(self, "hf_device_map"):
@@ -482,7 +494,12 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         batch_size = query_output.shape[0]
         image_embeds = vision_outputs.last_hidden_state
 
-        language_model_inputs = self.language_projection(query_output)
+        if mode == 'answers':
+            language_model_inputs = self.language_projection_answers(query_output)
+        elif mode == 'questions':
+            language_model_inputs = self.language_projection_questions(query_output)
+        else:
+            raise ValueError("Mode must be answers or questions")
         language_attention_mask = torch.ones(
             language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
         )

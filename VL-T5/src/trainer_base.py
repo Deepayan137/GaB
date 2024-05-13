@@ -160,7 +160,7 @@ class TrainerBase(object):
 
         lr_scheduler = None
         if 'blip_adamw' in self.args.optim:
-            optim = torch.optim.AdamW(params=self.model.parameters(), lr=1e-4, 
+            optim = torch.optim.AdamW(params=self.model.language_projection_answers.parameters(), lr=1e-4, 
                 weight_decay=self.args.warmup_ratio)
             # nparam = count_parameters(self.model.parameters())
             # print(f'trainable_parameters = {nparam}')
@@ -339,13 +339,18 @@ class TrainerBase(object):
                 actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
             elif self.args.ft_layers == 'query_tokens':
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-                actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+                # actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+                if 'language_projection_answers' in checkpoint['model'] and 'language_projection_questions' in checkpoint['model']:
+                    actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
+                    actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
+                else:
+                    actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
             if self.args.ft_layers =='last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
                 actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
                 actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-            self.optim.load_state_dict(checkpoint["optimizer"])
+            # self.optim.load_state_dict(checkpoint["optimizer"])
         elif 't5' in self.args.backbone:
             actual_model.load_state_dict(checkpoint["model"])
         if self.args.blip_model != "naiveblip":

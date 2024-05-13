@@ -127,7 +127,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
         elif ft_layers == 'query_tokens':
             print("Unfreeze only the query tokens")
             self.query_tokens.requires_grad = True
-            self.language_projection.requires_grad = True
+            self.language_projection_answers.requires_grad = True
         
         elif ft_layers == 'query_tokens_random':
             print("Unfreeze only the query tokens")
@@ -176,7 +176,8 @@ class NaiveBLIP2(NaiveBlip2VQACL):
             input_ids=input_ids, 
             attention_mask=attention_mask,
             max_new_tokens=max_new_tokens, 
-            repetition_penalty=1.2)
+            repetition_penalty=1.2,
+            mode='answers')
         result = {}
         result['token_ids'] = output
         result['pred_ans'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
@@ -195,7 +196,8 @@ class NaiveBLIP2(NaiveBlip2VQACL):
             vision_outputs=vision_outputs,
             input_ids=input_ids,
             attention_mask=attention_mask,
-            labels=lm_labels)
+            labels=lm_labels,
+            mode='answers')
         assert 'loss' in output
         B, L = lm_labels.size()
         loss = output['loss'] # 400 (bs*5)

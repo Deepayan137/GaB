@@ -90,9 +90,9 @@ def inference_qa(image_path, max_new_tokens=20):
 	pred_question =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 	return pred_question
 
-def inference_cap(images, prompts=None, temp=0.7):
+def inference_cap(images, prompts=None, temp=0.7, max_new_tokens=32):
 	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True).to(device)
-	generated_ids = model.generate(**inputs, max_new_tokens=48, num_beams=5, temperature=temp, do_sample=True, repetition_penalty=1.2)
+	generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, num_beams=5, temperature=temp, do_sample=True, repetition_penalty=1.2)
 	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 	if prompts:
 		empty_indices = [index for index, cap in enumerate(captions) if cap.strip() == ""]
@@ -104,11 +104,11 @@ def inference_cap(images, prompts=None, temp=0.7):
 
 
 
-spec_prompt_sing = ["the {noun} in the image is", "the {noun} in the image is doing", "the {noun} in the image is wearing a", "the {noun} in the image seems", ]
-spec_prompt_mult = ["the {noun} in the image are", "the {noun} in the image are doing", "the {noun} in the image are wearing", "the {noun} in the image seem",]
+spec_prompt_sing = ["The {noun} in the image is", "The {noun} in the image is doing", "The {noun} in the image is wearing a", "The {noun} in the image seems", ]
+spec_prompt_mult = ["The {noun} in the image are", "The {noun} in the image are doing", "The {noun} in the image are wearing", "The {noun} in the image seem",]
 
 def generate_prompts(features):
-	prompts = ["The image is of", "The place shown in the image is", "The color of", "the image is set in", "the image is taken during", "In the background is", 'On the right of']
+	prompts = ["The place shown in the image is", "The color of", 'On the right of', 'The weather is']
 	for noun, number in features['nouns']:
 		if number == 'plural':
 			if noun in ['man', 'woman', 'father', 'daughter','boy', 'girl', 'person', 'child', 'baby', 'animal', 'dog', 'cat', 'zebra', 'giraffe']:
@@ -141,7 +141,7 @@ if __name__ == "__main__":
 	# copy_val_files(path, dest_root)
 	print("Creating rehearsal")
 	tasks = Sg_task['function']['oarlks']
-	create_rehearsal_memory(source, dest_root, tasks)
+	# create_rehearsal_memory(source, dest_root, tasks)
 	model_name = "Salesforce/blip2-opt-2.7b"
 	model, processor = get_model(model_name)
 
@@ -165,7 +165,7 @@ if __name__ == "__main__":
 			img_name = f"{_d['image_id']}.jpg"
 			img_path = os.path.join(f"../datasets/gvqa", img_name)
 			image = Image.open(img_path).convert("RGB")
-			initial_caption = inference_cap(image, temp=2.5)
+			initial_caption = inference_cap(image, temp=2.5, max_new_tokens=48)
 			cap_list = []
 			# cap_dict[img_name]["captions"] = [initial_caption]
 			cap_list.append(initial_caption)
@@ -173,7 +173,7 @@ if __name__ == "__main__":
 			prompts = generate_prompts(features)
 			num_prompts = len(prompts)
 			images = num_prompts * [image]
-			caps = inference_cap(images, prompts,temp=1.8)
+			caps = inference_cap(images, prompts,temp=1.8, max_new_tokens=24)
 			cap_list.extend(caps)
 			caption = '. '.join([item.capitalize() for item in cap_list])
 			# cap_dict[img_name]["captions"].extend(caps)
