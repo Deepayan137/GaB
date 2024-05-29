@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import random
-# import wandb
+import wandb
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -10,13 +10,13 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoProcessor
-from torch.optim.lr_scheduler import MultiStepLR
 import collections
 from pathlib import Path
 from packaging import version
 import copy
 import numpy as np
 from tqdm import tqdm
+import pickle
 
 import logging
 import shutil
@@ -26,7 +26,7 @@ from param import parse_args
 from utils import load_state_dict, LossMeter, set_global_logging_level
 
 from trainer_base import TrainerBase
-os.environ['WANDB_MODE'] = 'offline'
+from src.data_utils_sgvqa import create_rehearsal_data
 sys.path.insert(0, '../')
 from Question_type import Sg_task, show_results_matrix
 
@@ -88,13 +88,16 @@ class Trainer(TrainerBase):
 		if self.regularizer is not None:
 			self.regularizer = self.regularizer.to(args.gpu)
 		if 'blip' in self.args.backbone:
-			# self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-			self.optim = torch.optim.AdamW(
-				params=self.model.parameters(),
-				lr=1e-4,  # Example learning rate
-				weight_decay=self.args.warmup_ratio  # Example weight decay
-			)
-			# self.lr_scheduler = MultiStepLR(self.optim, milestones=[4, 9], gamma=0.1)
+			self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+			if self.args.use_cap_loss and self.args.two_optim:
+				print("We will use caption loss and two optimizers")
+				self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
+					weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
+			elif self.args.use_cap_loss and not self.args.two_optim:
+				print("We will use caption loss and only one optimizer")
+			else:
+				print("We will use not use any captioning loss and will stick to original framework")
+			self.lr_scheduler = None
 		if self.verbose:
 			print(f'It took {time() - start:.1f}s')
 		self.iftrain = train
@@ -106,43 +109,15 @@ class Trainer(TrainerBase):
 		self.task_total_num = torch.zeros(len(self.task_list))
 		self.M = args.m_size
 		self.Examplar_set = {}
-		# print("Keeping the base model weights handy")
-		# base_path = 'snap/blip_base/base.pth'
-		# loc = "cuda" if torch.cuda.is_available() else "cpu"
-		# base_ckpt = torch.load(base_path, map_location=loc)
-		# self.base_qtokens = base_ckpt['model']['query_tokens']
-		# self.base_projection = base_ckpt['model']['language_projection']
-
-	def _interpolate_with_base(self):
-		print("Performing Model Averaging with Base Blip Model")
-		alpha = 0.5
-		with torch.no_grad():
-			self.model.query_tokens.data = (1 - alpha) * self.base_qtokens.data + alpha * self.model.query_tokens.data
-			self.model.language_projection_answers.weight.data = (1 - alpha) * self.base_projection['weight'].data + alpha * self.model.language_projection_answers.weight.data
-			self.model.language_projection_answers.bias.data = (1 - alpha) * self.base_projection['bias'].data + alpha * self.model.language_projection_answers.bias.data
 	
-	def _interpolate_with_last(self, task_idx):
-		alpha = 0.5
-		if task_idx == 0:
-			print("Although, interpolate with last but since only one task before me, thus")
-			self._interpolate_with_base()
-		elif task_idx > 0:
-			target_task = Sg_task["function"]["oarlks"][task_idx - 1]
-			print(f"Model averaging with {target_task}")
-			self._load_checkpoint(task_idx)
-			with torch.no_grad():
-				self.model.query_tokens.data = (1 - alpha) * self.last_task_qtokens.data + alpha * self.model.query_tokens.data
-				self.model.language_projection_answers.weight.data = (1 - alpha) * self.last_task_projection['weight'].data + alpha * self.model.language_projection_answers.weight.data
-				self.model.language_projection_answers.bias.data = (1 - alpha) * self.last_task_projection['bias'].data + alpha * self.model.language_projection_answers.bias.data
+	def _load_checkpoint(self, checkpoint_name, latest_task_idx):
+		checkpoint_model = f'{self.args.output}/{checkpoint_name}_BEST'
+		for idx, task in enumerate(self.task_list):
+			if idx <= latest_task_idx:
+				self.task_iftrain[task] = 1
+		self.load(checkpoint_model)
+		print(f'Success to load the checkpoint from the task {checkpoint_name}')
 
-	def _load_checkpoint(self, task_idx):
-		ckpt_path = f'{self.args.output}/{Sg_task["function"]["oarlks"][task_idx - 1]}_AVG_LAST.pth'
-		loc = "cuda" if torch.cuda.is_available() else "cpu"
-		last_task_ckpt = torch.load(ckpt_path, map_location=loc)
-		self.last_task_qtokens = last_task_ckpt['model']['query_tokens']
-		self.last_task_projection = last_task_ckpt['model']['language_projection_answers']
-		print(f'Successfully loaded the checkpoint from task {Sg_task["function"]["oarlks"][task_idx - 1]}')
-	
 	def train(self, load=False):
 		if 'blip' in args.backbone:
 			from sgvqa_data_blip import get_loader, get_loader_test, get_loader_memory
@@ -155,10 +130,10 @@ class Trainer(TrainerBase):
 			self.load(self.args.checkpoint)
 			# self._load_checkpoint(latest_task, latest_task_idx)
 		# run = wandb.init(
-		#   # Set the project where this run will be logged
-		#   project="scenevqa_15",
-		#   # Track hyperparameters and run metadata
-		#   config=vars(args)
+		#     # Set the project where this run will be logged
+		#     project="scenevqa_15",
+		#     # Track hyperparameters and run metadata
+		#     config=vars(args)
 		# )
 		task2id = {self.task_list[i]:i for i in range(len(self.task_list))}
 		id2task = {v:k for k, v in task2id.items()}
@@ -179,17 +154,74 @@ class Trainer(TrainerBase):
 			# Memory
 			if args.memory:
 				if task_idx > 0:
+					prev_task = self.task_list[task_idx - 1]
+					# ckpt_path = os.path.join(self.args.output, f'{prev_task}_BEST.pth')
+					# if os.path.exists(ckpt_path) and ckpt_path != self.args.checkpoint:
+					# 	self.load(ckpt_path) # Load the best previous model
 					each_memory = int(self.M / task_idx)
-					for t in range(task_idx):
-						tsk = self.task_list[t]
-						if tsk not in self.Examplar_set.keys():
-							data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{tsk}_train.npy')
-							data_info_dicts = np.load(data_info_path, allow_pickle=True)
-							random.shuffle(data_info_dicts)  # shuffle
-							self.Examplar_set[tsk] = data_info_dicts[:each_memory]
-					All_examplar = []
-					for task_set in self.Examplar_set:
-						All_examplar.extend(self.Examplar_set[task_set][:each_memory])
+					if not args.use_gen_data:
+						if args.use_biased_data:
+							print("Loading use_biased_data... Hahahahha")
+							with open(f'examplars/{task}.pkl', 'rb') as f:
+								self.Examplar_set = pickle.load(f)
+						else:
+							for t in range(task_idx):
+								tsk = self.task_list[t]
+								if tsk not in self.Examplar_set.keys():
+									data_info_path = (f'../datasets/npy/{args.scenario}/fcl_mmf_' + f'{tsk}_train.npy')
+									data_info_dicts = np.load(data_info_path, allow_pickle=True)
+									random.shuffle(data_info_dicts)  # shuffle
+									self.Examplar_set[tsk] = data_info_dicts[:each_memory]
+						All_examplar = []
+						for task_set in self.Examplar_set:
+							All_examplar.extend(self.Examplar_set[task_set][:each_memory])
+					else:
+						# Construct the task-specific file path
+						print("Welcome to the rehearsal module")
+						tsk = Sg_task['function']['oarlks'][task_idx]
+						scenario_dir = f'../datasets/npy_cap/{args.scenario}'
+						data_info_path = os.path.join(scenario_dir,f'fcl_mmf_{tsk}_train.json')
+						# Load the exemplar data from the file
+						with open(data_info_path, 'r') as file:
+							data = json.load(file)
+						if self.args.create_gen_data:
+							dest = f'../datasets/npy_self/{args.scenario}'
+							if os.path.exists(os.path.join(dest, f'fcl_mmf_{tsk}_train.json')):
+								print("Loading self generated QA pairs")
+								with open(os.path.join(dest, f'fcl_mmf_{tsk}_train.json'), 'r') as f:
+									All_examplar = json.load(f)
+								if self.args.self_train:
+									print("We will use model's prediction as pseudo labels")
+								else:
+									print("We will use adapters QA")
+							else:
+								print("Creating own QA pairs")
+								All_examplar = create_rehearsal_data(self.args, task_idx, self.model, self.processor, data, dest)
+						else:
+							print("Loading Llama generated QA pairs")
+							# Filter and reformat the exemplar data
+							scenario_dir = f'../datasets/npy_llama/{args.scenario}'
+							data_info_path = os.path.join(scenario_dir,f'{tsk}_gen_qa_pairs.json')
+							# Load the exemplar data from the file
+							with open(data_info_path, 'r') as file:
+								All_examplar = json.load(file)
+							filtered_exemplars = []
+							for datum in All_examplar:
+								new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
+								# Extract questions and answers, filter out 'not specified' answers
+								questions = [datum[key] for key in datum if key.startswith('Q_')]
+								answers = [datum[key] for key in datum if key.startswith('A_')]
+								qa_pairs = [(q, a) for q, a in zip(questions[0], answers[0]) if (a != 'not specified') or (a != "not sure")]
+								
+							# Only add non-empty QA pairs back to the new datum
+							if qa_pairs:
+								questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
+								new_datum['Q'] = list(questions)
+								new_datum['A'] = list(answers)
+								filtered_exemplars.append(new_datum)
+
+							# Replace the original list with the filtered list
+							All_examplar = filtered_exemplars
 					print("# The size of the cate Memory:", len(All_examplar))
 				else:
 					All_examplar = []
@@ -201,11 +233,14 @@ class Trainer(TrainerBase):
 			# Load the data
 			print("#Loading ", task)
 			print(f'Building train loader at GPU {args.gpu}')
-			
+			if task != "scenetext":
+				batch_size = args.batch_size
+			else:
+				batch_size = 1
 			train_loader, total_num_Q = get_loader(
 				args,
 				split=args.train, scenario=args.scenario, 
-				batch_size= args.batch_size,
+				batch_size=batch_size,
 				workers=args.num_workers,
 				task=task,
 			)
@@ -242,6 +277,7 @@ class Trainer(TrainerBase):
 			# if self.verbose:
 			loss_meter = LossMeter()
 			loss_meter_mem = LossMeter()
+			loss_meter_ques = LossMeter()
 			best_valid = 0.
 			best_epoch = 0
 
@@ -261,7 +297,7 @@ class Trainer(TrainerBase):
 			# score_dict = self.evaluate(self.val_loader_cate, task)
 			valid_score_raw_best = 0.0
 			patience_counter = 0
-			patience = 6
+			patience = 5
 			for epoch in range(start_epoch, self.args.epochs):
 				if self.start_epoch is not None:
 					epoch += self.start_epoch
@@ -289,7 +325,11 @@ class Trainer(TrainerBase):
 					if mem_batch:
 						results_mem, lr = self.train_step(mem_batch, epoch_results, task_idx, each_memory)    
 					loss_meter.update(results['loss'].item())
-					desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f}'
+					if 'loss_cap' in results:
+						loss_meter_ques.update(results['loss_cap'].item())
+					else:
+						loss_meter_ques.update(-1)
+					desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} |'
 					if mem_batch:
 						loss_meter_mem.update(results_mem['loss'].item())
 						desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
@@ -303,8 +343,7 @@ class Trainer(TrainerBase):
 
 				if args.show_train_progress:
 					pbar.close()
-				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}")
-				# if (epoch+1) % 5 == 0:
+				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}, Loss_Ques: {loss_meter_ques.val}")
 				score_dict = self.evaluate(self.val_loader, task)
 				valid_score_raw = score_dict['overall']
 				# wandb.log({
@@ -321,30 +360,35 @@ class Trainer(TrainerBase):
 				else:
 					patience_counter += 1  # Increment the patience counter
 					print(f"No improvement for {patience_counter} epochs.")
-
+				self.save(task + "_LAST")
 				if patience_counter > patience:
 					print("Early stopping triggered.")
 					print("Saving Last")
-					# self.save(task + "_LAST")
-					# break  # Break out of the training loop
-			print("Saving Last")
-			self.save(task + "_LAST")
-			# if args.avg_with_base:
-			#   self._interpolate_with_base()
-			#   self.save(task + "_AVG_BASE")
-			# elif args.avg_with_last:
-			#   self._interpolate_with_last(task_idx)
-			#   self.save(task + "_AVG_LAST")
+					break  # Break out of the training loop
+		print("Saving Last")
+		self.save(task + "_LAST")
+
 	def train_step(self, batch, epoch_results, task_idx, each_memory):
 		self.optim.zero_grad(set_to_none=True)
 		results = self.model.train_step(batch, task_idx)
 		loss = results['loss']
+		if 'loss_cap' in results:
+			if self.args.use_cap_loss:
+				loss_cap = results['loss_cap']
+				if not self.args.two_optim:
+					loss = loss + loss_cap
+				else:
+					self.optim_question.zero_grad(set_to_none=True)
+					loss_cap.backward(retain_graph=True)
+					self.optim_question.step()
+	 
 		loss.backward()
 		loss = loss.detach()
 		if self.args.clip_grad_norm > 0:
 			 torch.nn.utils.clip_grad_norm_(
 					self.model.parameters(), self.args.clip_grad_norm)
 		self.optim.step()
+		# 
 		if self.lr_scheduler:
 			self.lr_scheduler.step()
 		for param in self.model.parameters():
@@ -383,11 +427,10 @@ class Trainer(TrainerBase):
 		if self.args.checkpoint != 'None':
 			last_path = os.path.join(self.args.checkpoint)
 			print(f"The last path is {last_path}")
-			import pdb;pdb.set_trace()
 			if os.path.exists(last_path + '.pth') and not self.args.now_train:
 				self.load(last_path)
 				task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:1])
-				self.test_single(task)
+				self.test(task)
 			else:
 				print("No model found")
 		else:
@@ -527,22 +570,20 @@ def main_worker(args):
 
 	else:
 		if args.checkpoint!='None':
-			# task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
-			# task = Sg_task['function']['oarlks'][task_idx]
-			# if (args.output).endswith('base'):
-			# 	args.checkpoint = f'{args.output}/{task}_AVG_BASE'
-			# else:
-			# 	args.checkpoint = f'{args.output}/{task}_AVG_LAST'
+			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0))
+			task = Sg_task['function']['oarlks'][task_idx]
+			args.checkpoint = f'{args.output}/{task}_BEST'
+			print(args.checkpoint)
 			trainer.Test(load=True)
 		else:
 			trainer.Test(load=False)
 
 		try:
 			print('#------------------ Final Performance --------------------#')
-			print(trainer.result_matrix['scenetext'])
+			print(trainer.result_matrix['q_causal'])
 			acc = 0
-			for key in trainer.result_matrix['scenetext']:
-				acc += trainer.result_matrix['scenetext'][key]
+			for key in trainer.result_matrix['q_causal']:
+				acc += trainer.result_matrix['q_causal'][key]
 			print('AP:', round(acc/10, 4))
 
 		except:

@@ -19,17 +19,22 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class SGVQA(Dataset):
 	def __init__(self, task='object', split='train', scenario='scene', verbose=True, args=None):
 		super().__init__()
-		filename = f'fcl_mmf_{task}_{split}.npy'
-		data_path = os.path.join('../datasets/npy', scenario, filename)
+		filename = f'fcl_mmf_{task}_{split}.json'
+		data_path = os.path.join('../datasets/npy_cap_all', scenario, filename)
 		print(data_path)
-		self.data = np.load(data_path, allow_pickle=True)
+		with open(data_path, 'r') as f:
+			data = json.load(f)
+		self.data = data
+		# self.data = np.load(data_path, allow_pickle=True)
 		# self.data = self.data[:50]
 
 		self.args=args
-		if 'blip' in self.args.backbone:
-			self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+		# if 'blip' in self.args.backbone:
+		self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 		self.processor.tokenizer.padding_side = 'right'
 		self.processor.tokenizer.truncation_side = 'right'
+		if self.args.reverse_caption:
+			print("We will use reverse captioning strategy")
 		if verbose:
 			print("# all sentences:", len(self.data), 'with Examplers')
 		self.split = split
@@ -56,9 +61,10 @@ class SGVQA(Dataset):
 		if 'question' in datum:
 			sent = datum['question']
 		max_length = 20
-		sent = f"Question: {sent.lower()} Answer:"
+		sent = f"Question:{sent.lower()} Answer:"
 		inputs = self.processor(image, text=sent, max_length=max_length, 
 			truncation=True, return_tensors="pt")
+		
 		out_dict['pixel_values'] = inputs['pixel_values']
 
 		question_id = datum['question_id']
@@ -73,6 +79,15 @@ class SGVQA(Dataset):
 			else:
 				answer = datum['answer']
 			out_dict['answer'] = answer
+		if self.args.reverse_caption:
+			caption = datum['caption'].split('.')[0] + '.'
+			caption = f"Caption:{caption} Answer:{answer}. Question:{datum['question']}"
+		else:
+			caption = f"{datum['question']} {answer}"
+		cap_ids = self.processor.tokenizer.encode(caption, max_length=70, truncation=True)
+		out_dict['cap_ids'] = torch.LongTensor(cap_ids)
+		out_dict['cap_length'] = len(cap_ids)
+		out_dict['caption'] = caption
 		if 'answers' in datum:    
 			out_dict['all_answers'] = datum['answers']
 		target_ids = self.processor.tokenizer.encode(answer, max_length=10, truncation=True)
@@ -95,7 +110,12 @@ class SGVQA(Dataset):
 			T_W_L = max(entry['target_length'] for entry in batch)
 			target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 		
+		if 'cap_ids' in batch[0]:
+			C_W_L = max(entry['cap_length'] for entry in batch)
+			cap_ids = torch.ones(B, C_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
+
 		sentences = []
+		captions= []
 		question_ids = []
 		answers = []
 		all_answers = []
@@ -107,12 +127,16 @@ class SGVQA(Dataset):
 			input_ids[i, :entry['input_length']] = entry['input_ids'][0]
 			if 'target_ids' in entry:
 				target_ids[i, :entry['target_length']] = entry['target_ids']
+			if 'cap_ids' in entry:
+				cap_ids[i, :entry['cap_length']] = entry['cap_ids']
 			if args.use_vision:
 				vis_feats[i] += entry['pixel_values'][0]
 			sentences.append(entry['sent'])
 			question_ids.append(entry['question_id'])
 			if 'answer' in entry:
 				answers.append(entry['answer'])
+			if 'caption' in entry:
+				captions.append(entry['caption'])
 			if 'all_answers' in entry:
 				all_answers.append(entry['all_answers'])
 
@@ -122,7 +146,8 @@ class SGVQA(Dataset):
 		batch_entry['input_ids'] = input_ids
 		if 'target_ids' in batch[0]:
 			batch_entry['target_ids'] = target_ids
-
+		if 'cap_ids' in batch[0]:
+			batch_entry['cap_ids'] = cap_ids
 		if args.use_vision:
 			batch_entry['pixel_values'] = vis_feats
 		batch_entry['sent'] = sentences
@@ -132,6 +157,7 @@ class SGVQA(Dataset):
 		batch_entry['img_id'] = img_ids
 		batch_entry['args'] = args
 		batch_entry['task'] = 'sgvqa'
+		batch_entry['caption'] = captions
 		return batch_entry
 
 
@@ -171,10 +197,32 @@ class SGVQA_memory(Dataset):
 			image = Image.open(f).convert("RGB")
 		else:
 			raise "image path does not exists"
-		if 'question' in datum:
-			sent = datum['question']
+		if self.args.use_gen_data and not self.args.create_gen_data:
+			questions = datum["Q"]
+			answers = datum["A"]
+			num_q = len(questions)
+			sample_idx = random.sample(range(num_q), k=1)[0]
+			sent = questions[sample_idx]
+		elif self.args.use_gen_data and self.args.create_gen_data:
+			potential_answer = None
+			for key, value in datum.items():
+				if key.startswith("Q"):
+					sent = datum[key]
+				if (self.args.self_train and key.startswith("A")):
+					potential_answer = value
+				elif (not self.args.self_train and key.startswith("A")):
+					potential_answer = value
+			if isinstance(potential_answer, list) and potential_answer:
+				answer = potential_answer[0]
+			elif isinstance(potential_answer, str) and potential_answer:
+				answer = potential_answer
+			else:
+				answer = "not sure"
+		else:
+			if 'question' in datum:
+				sent = datum['question']
 		max_length = 20
-		sent = f"Question: {sent.lower()}? Answer:"
+		sent = f"Question: {sent.lower()} Answer:"
 		inputs = self.processor(image, text=sent, max_length=max_length, 
 			truncation=True, return_tensors="pt")
 		out_dict['pixel_values'] = inputs['pixel_values']
@@ -185,11 +233,20 @@ class SGVQA_memory(Dataset):
 		out_dict['sent'] = sent
 		out_dict['input_ids'] = inputs["input_ids"]
 		out_dict['input_length'] = len(inputs["input_ids"][0])
-		if 'answer' in datum:
+		if self.args.use_gen_data and not self.args.create_gen_data:
+			ans = answers[sample_idx]
+			ans_words = ans.split(' ')
+			if len(ans_words) >= 3:
+				ans_words = ans_words[:3]
+				ans = " ".join(ans_words) 
+			out_dict['answer'] = ans
+		elif self.args.use_gen_data and self.args.create_gen_data:
+			out_dict['answer'] = answer
+		else:
 			out_dict['answer'] = datum['answer']
 		if 'answers' in datum:    
 			out_dict['all_answers'] = datum['answers']
-		target_ids = self.processor.tokenizer.encode(datum['answer'], 
+		target_ids = self.processor.tokenizer.encode(out_dict['answer'], 
 			max_length=10, truncation=True)
 		out_dict['target_ids'] = torch.LongTensor(target_ids)
 		out_dict['target_length'] = len(target_ids)
@@ -504,25 +561,61 @@ if __name__ == "__main__":
 	args = parse_args()
 	args.backbone = 'blip'
 	split = f'val'
-	scenario='scene'
-	task='a#ShopAndDining'
-	data_info_path = ('../datasets/npy/scene/fcl_mmf_' + f'a#ShopAndDining_train.npy')
-	data_info_dicts = np.load(data_info_path, allow_pickle=True)
+	scenario='function'
+	task='attribute'
+	args.use_gen_data = True
+	args.create_gen_data = True
+	data_info_path = (f'../datasets/npy_self/{scenario}/' + f'fcl_mmf_attribute_train.json')
+	with open(data_info_path, 'r') as file:
+		All_examplar = json.load(file)
+	filtered_exemplars = []
+	# for datum in All_examplar:
+	# 	new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
+	# 	# Extract questions and answers, filter out 'not specified' answers
+	# 	questions = [datum[key] for key in datum if key.startswith('Q_')]
+	# 	answers = [datum[key] for key in datum if key.startswith('A_cap')]
+	# 	qa_pairs = [(q, a) for q, a in zip(questions, answers) if (a != 'not specified') or (a != "not sure")]
+	# 	# Only add non-empty QA pairs back to the new datum
+	# 	if qa_pairs:
+	# 		questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
+	# 		new_datum['Q'] = questions
+	# 		new_datum['A'] = answers
+	# 		filtered_exemplars.append(new_datum)
 
-	random.shuffle(data_info_dicts)  # shuffle
-	All_examplar = data_info_dicts[:5000]
-	loader = get_loader_test(args, scenario=scenario, task=task, workers=0)
-	quesid2ans = {}
-	gtAnswers = {}
+	# All_examplar = filtered_exemplars
+
+	# # Filter and reformat the exemplar data
+	# filtered_exemplars = []
+	# for datum in data_info_dicts:
+	#   new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
+	#   # Extract questions and answers, filter out 'not specified' answers
+	#   questions = [datum[key] for key in datum if key.startswith('Q_')]
+	#   answers = [datum[key] for key in datum if key.startswith('A_')]
+	#   qa_pairs = [(q, a) for q, a in zip(questions[0], answers[0]) if a != 'not specified']
+	#   # Only add non-empty QA pairs back to the new datum
+	#   if qa_pairs:
+	#       questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
+	#       new_datum['Q'] = questions
+	#       new_datum['A'] = answers
+	#       filtered_exemplars.append(new_datum)
+
+	# # Replace the original list with the filtered list
+	# All_examplar = filtered_exemplars
+
+	# random.shuffle(data_info_dicts)  # shuffle
+	# All_examplar = data_info_dicts[:5000]
+	loader= get_loader_memory(args, All_examplar, batch_size=32, workers=0)
+	# quesid2ans = {}
+	# gtAnswers = {}
 	for batch in loader:
-		
-		answers = batch['answers']
-		qids = batch['question_ids']
-		all_answers = batch['all_answers']
-		pairs = list(zip(qids, answers, all_answers))
-		for qid, answer, all_ in pairs:
-			quesid2ans[qid] = answer
-			gtAnswers[qid] = {}
-			gtAnswers[qid]['answers'] = all_ 
-		acc = loader.evaluator.evaluate_raw(quesid2ans, gtAnswers)
-		print(acc)
+		import pdb;pdb.set_trace()  
+	#   answers = batch['answers']
+	#   qids = batch['question_ids']
+	#   all_answers = batch['all_answers']
+	#   pairs = list(zip(qids, answers, all_answers))
+	#   for qid, answer, all_ in pairs:
+	#       quesid2ans[qid] = answer
+	#       gtAnswers[qid] = {}
+	#       gtAnswers[qid]['answers'] = all_ 
+	#   acc = loader.evaluator.evaluate_raw(quesid2ans, gtAnswers)
+	#   print(acc)

@@ -136,17 +136,9 @@ class Trainer(TrainerBase):
         if self.regularizer is not None:
             self.regularizer = self.regularizer.to(args.gpu)
         if 'blip' in self.args.backbone:
-            # self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-            self.optim = torch.optim.AdamW(
-                params=self.model.language_projection.parameters(),
-                lr=1e-4,  # Example learning rate
-                weight_decay=self.args.warmup_ratio  # Example weight decay
-            )
-            # self.optim_question = torch.optim.AdamW(
-            #     params=self.model.language_projection_questions.parameters(),
-            #     lr=1e-5,  # Potentially different learning rate for question generation
-            #     weight_decay=self.args.warmup_ratio  # Using same weight decay as an example
-            # )
+            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+            # self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
+            # weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
             self.lr_scheduler = None
         if args.multiGPU:
             if args.distributed:
@@ -429,7 +421,7 @@ class Trainer(TrainerBase):
 
     def train_step(self, batch, epoch_results, task_idx, each_memory):
         self.optim.zero_grad(set_to_none=True)
-        self.optim_question.zero_grad(set_to_none=True)
+        # self.optim_question.zero_grad(set_to_none=True)
         if self.args.fp16 and _use_native_amp:
             with autocast():
                 if self.args.distributed:
@@ -456,7 +448,7 @@ class Trainer(TrainerBase):
             loss = loss + lambda_Q_new * loss_memory_Q_new + lambda_V_new * loss_memory_V_new
         if 'loss_cap' in results:
             loss_cap = results['loss_cap']
-            loss = loss + loss_cap
+            # loss = loss + loss_cap
         if self.regularizer is not None:
             cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
             loss += cl_reg
@@ -488,7 +480,7 @@ class Trainer(TrainerBase):
             self.scaler.update()
         else:  # this
             self.optim.step()
-            self.optim_question.step()
+            # self.optim_question.step()
         if self.lr_scheduler:
             self.lr_scheduler.step()
         for param in self.model.parameters():
@@ -727,17 +719,17 @@ def main_worker(gpu, args):
         trainer = Trainer(args, coco_Ours, train=True)
     if args.now_train:
         # List all files in the output directory and filter out non-checkpoint files
-        ckpts = [file for file in os.listdir(args.output) if file.endswith(".pth") and not os.path.isdir(os.path.join(args.output, file))]
+        # ckpts = [file for file in os.listdir(args.output) if file.endswith(".pth") and not os.path.isdir(os.path.join(args.output, file))]
 
-        # Initialize checkpoint variable
-        args.checkpoint = None
+        # # Initialize checkpoint variable
+        # args.checkpoint = None
 
-        # Find the latest checkpoint that matches the latest task
-        for t in reversed(All_task):  # No need to slice the list, just reverse iterate
-            if t in ckpts:
-                print(f"Latest checkpoint found @ {args.checkpoint}")
-                args.checkpoint = t
-                break
+        # # Find the latest checkpoint that matches the latest task
+        # for t in reversed(All_task):  # No need to slice the list, just reverse iterate
+        #     if t in ckpts:
+        #         print(f"Latest checkpoint found @ {args.checkpoint}")
+        #         args.checkpoint = t
+        #         break
 
         # If a checkpoint is found, load it; otherwise, start training without loading
         if args.checkpoint:
@@ -765,6 +757,7 @@ def main_worker(gpu, args):
             task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
             task = All_task[task_idx]
             args.checkpoint = f'{args.output}/{task}_LAST'
+            print(args.checkpoint)
             trainer.Test(load=True)
         else:
             trainer.Test(load=False)

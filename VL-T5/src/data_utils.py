@@ -14,14 +14,11 @@ sys.path.insert(0, '../')
 from Question_type import *
 from torchvision.transforms.functional import to_tensor
 
-import os
 import re
-import json
-import torch
 import transformers
 import logging
 from tqdm import *
-from transformers import LlamaForCausalLM, LlamaTokenizer
+
 import warnings
 warnings.filterwarnings('ignore')
 # Disable tokenizers parallelism
@@ -38,14 +35,14 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 		print("We will use Synthetic QA pairs")
 		if args.create_gen_data:
 			task = All_task[task_idx]
-			dest = '../datasets/vqa/Partition_Q_V2_subset_Filtered/'
+			dest = '../datasets/vqa/Partition_Q_V2_subset_ST/'
 			if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
 				print(f"Synthetic QA pairs not found so creating  for task {task}")
 				create_rehearsal_data(args, task_idx, model, processor, dest)
 				print("Data creation completed, will load blip generated QA pairs")
 		else:
 			print("Loading Llama generated QA pairs")
-			dest = '../datasets/vqa/Partition_Q_V2_subset_new/'
+			dest = '../datasets/vqa/Partition_Q_V2_llamaQA'
 		each_memory = 5000
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
 		data_info_path = (f'{dest}/karpathy_train_' + f'{All_task[task_idx]}.json')
@@ -209,11 +206,11 @@ def create_rehearsal_data(args, task_idx, model, processor, dest):
 	qagen = QAGen(args, model, processor)
 	task = All_task[task_idx]
 	Examplar_set = qagen._load_data(task_idx)
-	split = int(15000/task_idx)
+	split = int(5000/task_idx)
 	cat_split = int(split / 5)
 	new_data = []
 	incorrect_samples=0
-	total_samples = 10000
+	total_samples = 5000
 	limit = 5000// task_idx
 	total=0
 	for i in range(task_idx):
@@ -241,16 +238,16 @@ def create_rehearsal_data(args, task_idx, model, processor, dest):
 			caption_answer = caption_answer or "not sure"
 
 			# Only process further if both answers are not "not sure" and are identical
-			if answer and caption_answer != "not sure" and caption_answer == answer:
-				examplar[f"Q_{qg_task}"] = question
-				examplar[f"A_self_{qg_task}"] = post_process_answer(answer)
-				examplar[f"A_cap_{qg_task}"] = caption_answer
-				new_data.append(examplar)
-				count += 1
-				total += 1
-		
-				if count >= limit:
-					break
+			# if answer and caption_answer != "not sure" and caption_answer == answer:
+			examplar[f"Q_{qg_task}"] = question
+			examplar[f"A_self_{qg_task}"] = post_process_answer(answer)
+			examplar[f"A_cap_{qg_task}"] = caption_answer
+			new_data.append(examplar)
+			count += 1
+			total += 1
+	
+			if count >= limit:
+				break
 		
 	with open(f'{dest}/karpathy_train_{task}.json', 'w') as json_file:
 		json.dump(new_data, json_file, indent=4)

@@ -50,33 +50,36 @@ def copy_val_files(source, dest_root):
 
 def create_rehearsal_memory(dest_root):
 	for task_idx in range(len(All_task)):
-		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		os.makedirs(dest_root, exist_ok=True)
-		if task_idx > 0:
-			each_memory = 5000
-			data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{All_task[task_idx]}.json')
-			with open(data_info_path, 'r') as f:
-				data_info_dicts = json.load(f)
-			random.shuffle(data_info_dicts)
-			each_memory_for_cate = int(each_memory / len(Category_splits))
-			for cate in Category_splits:
-				num = 0
-				for _d in data_info_dicts:
-					img_id = _d['img_id']
-					if img_id in ImgId_cate_map:
-						if ImgId_cate_map[img_id] in Category_splits[cate]:
-							Examplar_set[cate].append(_d)
-							num += 1
-							if num >= each_memory_for_cate:
-								break
-			
-			All_examplar = []
-			for cate in Category_splits:
-				All_examplar.extend(Examplar_set[cate])
-			print(f"Data present in {All_task[task_idx]} split: {len(All_examplar)}")
-			dest = os.path.join(dest_root, f'karpathy_train_{All_task[task_idx]}.json')
-			with open(dest, 'w') as f:
-				json.dump(All_examplar, f, indent=4)
+		dest = os.path.join(dest_root, f'karpathy_train_{All_task[task_idx]}.json')
+		if not os.path.exists(dest):
+			Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+			os.makedirs(dest_root, exist_ok=True)
+			if task_idx > 0:
+				each_memory = 5000
+				data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{All_task[task_idx]}.json')
+				with open(data_info_path, 'r') as f:
+					data_info_dicts = json.load(f)
+				random.shuffle(data_info_dicts)
+				each_memory_for_cate = int(each_memory / len(Category_splits))
+				for cate in Category_splits:
+					num = 0
+					for _d in data_info_dicts:
+						img_id = _d['img_id']
+						if img_id in ImgId_cate_map:
+							if ImgId_cate_map[img_id] in Category_splits[cate]:
+								Examplar_set[cate].append(_d)
+								num += 1
+								if num >= each_memory_for_cate:
+									break
+				
+				All_examplar = []
+				for cate in Category_splits:
+					All_examplar.extend(Examplar_set[cate])
+				print(f"Data present in {All_task[task_idx]} split: {len(All_examplar)}")
+				with open(dest, 'w') as f:
+					json.dump(All_examplar, f, indent=4)
+		else:
+			print("Already rehearsal data present")
 
 def inference_qa(image_path, max_new_tokens=20):
 	image = Image.open(image_path).convert("RGB")
@@ -91,9 +94,9 @@ def inference_qa(image_path, max_new_tokens=20):
 	pred_question =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 	return pred_question
 
-def inference_cap(images, prompts=None, temp=0.7):
+def inference_cap(images, prompts=None, temp=0.7, max_new_tokens=32):
 	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True).to(device)
-	generated_ids = model.generate(**inputs, max_new_tokens=56, num_beams=5, temperature=temp, do_sample=True)
+	generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, num_beams=5, temperature=temp, do_sample=True)
 	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 	if prompts:
 		empty_indices = [index for index, cap in enumerate(captions) if cap.strip() == ""]
@@ -109,15 +112,16 @@ spec_prompt_sing = ["the {noun} in the image is", "the {noun} in the image is do
 spec_prompt_mult = ["the {noun} in the image are", "the {noun} in the image are doing", "the {noun} in the image are wearing", "the {noun} in the image seem",]
 
 def generate_prompts(features):
-	prompts = ["The image is of", "The place shown in the image is", "The color of", "the image is set in", "the image is taken during", "In the background is", 'On the right of']
+	# prompts = ["The image is of", "The place shown in the image is", "The color of", "the image is set in", "the image is taken during", "In the background is", 'On the right of']
+	prompts = ["The place shown in the image is", "The color of", 'On the right of', 'On the left of',]
 	for noun, number in features['nouns']:
 		if number == 'plural':
-			if noun in ['man', 'woman', 'father', 'daughter','boy', 'girl', 'person', 'child', 'baby', 'animal', 'dog', 'cat', 'zebra', 'giraffe']:
+			if noun in ['man', 'woman', 'father', 'daughter','boy', 'girl', 'person', 'child', 'baby', 'animal', 'dog', 'cat', 'zebra', 'giraffe', 'cow', 'horse']:
 				for prompt in spec_prompt_mult:
 					prompts.append(prompt.format(noun=noun))
 			
 		else:
-			if noun in ['men', 'women', 'boys', 'girls', 'persons', 'children', 'babies', 'animals', 'dogs', 'cats', 'zebras', 'giraffes']:
+			if noun in ['men', 'women', 'boys', 'girls', 'persons', 'children', 'babies', 'animals', 'dogs', 'cats', 'zebras', 'giraffes', 'cows', 'horses']:
 				for prompt in spec_prompt_sing:
 					prompts.append(prompt.format(noun=noun))
 	return prompts
@@ -125,22 +129,26 @@ def generate_prompts(features):
 def extract_features(sentence):
 	doc = nlp(sentence)
 	features = {
-        'nouns': [],
-    }
+		'nouns': [],
+	}
 	for token in doc:
 		if token.pos_ == "NOUN":
 			number = "plural" if token.tag_ == "NNS" else "singular"
 			features["nouns"].append((token.text, number))
 	return features
 				
-
+def get_initial_caption(image):
+	initial_captions = inference_cap(image, prompts=['Describe the scene in this image:'], temp=0.9, max_new_tokens=48)
+	if not initial_captions:
+		initial_captions = inference_cap(image, temp=0.9, max_new_tokens=48)
+	return initial_captions[0] if initial_captions else None
 
 if __name__ == "__main__":
 	path = f"../datasets/vqa/Partition_Q_V2/"
-	dest_root = f"../datasets/vqa/Partition_Q_V2_subset_new"
+	dest_root = f"../datasets/vqa/temp/"
 	os.makedirs(dest_root, exist_ok=True)
-	copy_val_files(path, dest_root)
-	# create_rehearsal_memory(dest_root)
+	# copy_val_files(path, dest_root)
+	create_rehearsal_memory(dest_root)
 	model_name = "Salesforce/blip2-opt-2.7b"
 	model, processor = get_model(model_name)
 
@@ -150,13 +158,12 @@ if __name__ == "__main__":
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
 	task = All_task[task_idx]
 	# task_idx = 0
+	split="train"
 	if task_idx > -1:
-		fname = f"karpathy_test_{task}.json"
-		source = os.path.join(path, fname)
+		fname = f"karpathy_{split}_{task}.json"
 		dest = os.path.join(dest_root, fname)
 		with open(dest, 'r') as f:
 			data_subset = json.load(f)
-			
 		new_data = []
 		count=0
 		for _d in tqdm(data_subset):
@@ -164,21 +171,21 @@ if __name__ == "__main__":
 			split = "train" if 'train2014' in img_name else 'val'
 			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
 			image = Image.open(img_path).convert("RGB")
-			initial_caption = inference_cap(image, temp=2.5)
+			initial_caption = get_initial_caption(image)
 			cap_list = []
-			# cap_dict[img_name]["captions"] = [initial_caption]
-			cap_list.append(initial_caption)
-			features = extract_features(initial_caption)
-			prompts = generate_prompts(features)
-			num_prompts = len(prompts)
-			images = num_prompts * [image]
-			caps = inference_cap(images, prompts,temp=1.8)
-			cap_list.extend(caps)
-			caption = '. '.join([item.capitalize() for item in cap_list])
-			# cap_dict[img_name]["captions"].extend(caps)
-			_d['caption'] = caption
-			new_data.append(_d)
-			count+=1
+			if initial_caption:
+				initial_caption = initial_caption.replace('Describe the scene in this image:', '')
+				cap_list.append(initial_caption)
+				features = extract_features(initial_caption)
+				prompts = generate_prompts(features)
+				num_prompts = len(prompts)
+				images = num_prompts * [image]
+				caps = inference_cap(images, prompts,temp=0.7, max_new_tokens=32)
+				cap_list.extend(caps)
+				caption = '. '.join([item.capitalize() for item in cap_list])
+				_d['caption'] = caption
+				new_data.append(_d)
+				count+=1
 		with open(dest, 'w') as f:
 			json.dump(new_data, f, indent=4)
 	print(f"Finished. Captions printed{count}")

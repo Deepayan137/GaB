@@ -523,11 +523,12 @@ class VQAFineTuneDataset_memory(Dataset):
                 if self.args.use_gen_data:
                     potential_answer= None
                     for key, value in datum.items():
+                        if not self.args.create_gen_data and key.startswith("A_"):
+                            potential_answer = value
                         if self.args.self_train and key.startswith("A_self"):
                             potential_answer = value
-                        elif (not self.args.self_train and key.startswith("A_cap")) or  key.startswith("A_"):
+                        elif (not self.args.self_train and key.startswith("A_cap")):
                             potential_answer = value
-    
                     if isinstance(potential_answer, list) and potential_answer:
                         answer = potential_answer[0]
                     elif isinstance(potential_answer, str) and potential_answer:

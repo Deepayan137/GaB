@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-All_task = ['q_recognition', 'q_location', 'q_judge', 'q_commonsense', 'q_count']
+All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 # All_task = ['q_location']
 class Analysis(object):
 	def __init__(self, paths):
@@ -52,7 +52,7 @@ class Analysis(object):
 
 if __name__ == "__main__":
 	savepath = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/VL-T5/snap"
-	model_names = ['naiveblip_cl_syn_filtered']
+	model_names = ['naiveblip_cl_llama']
 	# model_names = os.listdir(savepath)
 	f = lambda x: os.path.join(savepath, x)
 	model_paths = list(map(f, model_names))

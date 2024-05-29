@@ -15,12 +15,16 @@ from src.param import parse_args
 from collections import OrderedDict
 import shutil
 import sys
+import numpy as np
 from tqdm import *
 from Question_type import *
 import os
 import random
 
 from src.param import parse_args
+
+import warnings
+warnings.filterwarnings("ignore")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 nlp = spacy.load("en_core_web_sm")
 device = 'cuda'
@@ -39,9 +43,9 @@ def get_model(model_name):
 	return model, processor
 
 def copy_val_files(source, dest_root):
-	for task in All_task:
-		source_file = '../datasets/vqa/Partition_Q_V2/karpathy_test_' + f'{task}.json'
-		dest_file = os.path.join(dest_root, f'karpathy_test_{task}.json')
+	for task in Sg_task['function']['oarlks']:
+		source_file = os.path.join(source, f"fcl_mmf_{task}_val.npy")
+		dest_file = os.path.join(dest_root, f"fcl_mmf_{task}_val.npy")
 		if not os.path.exists(dest_file):
 			shutil.copyfile(source_file, dest_file)
 		else:
@@ -49,35 +53,29 @@ def copy_val_files(source, dest_root):
 	print("Complete...")
 
 
-def create_rehearsal_memory(dest_root):
-	for task_idx in range(len(All_task)):
-		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+def create_rehearsal_memory(source, dest_root, tasks):
+	for task_idx in range(len(tasks)):
 		os.makedirs(dest_root, exist_ok=True)
-		if task_idx > 0:
+		if task_idx > -1:
 			each_memory = 5000
-			data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{All_task[task_idx]}.json')
-			with open(data_info_path, 'r') as f:
-				data_info_dicts = json.load(f)
-			random.shuffle(data_info_dicts)
-			each_memory_for_cate = int(each_memory / len(Category_splits))
-			for cate in Category_splits:
-				num = 0
+			fname = f"fcl_mmf_{tasks[task_idx]}_train.npy"
+			dest = os.path.join(dest_root, fname.split('.')[0]+'.json')
+			if not os.path.exists(dest):
+				source_file = os.path.join(source, fname)
+				data_info_dicts = np.load(source_file, allow_pickle=True)
+				random.shuffle(data_info_dicts)
+				data_subset = []
+				num=0
 				for _d in data_info_dicts:
-					img_id = _d['img_id']
-					if img_id in ImgId_cate_map:
-						if ImgId_cate_map[img_id] in Category_splits[cate]:
-							Examplar_set[cate].append(_d)
-							num += 1
-							if num >= each_memory_for_cate:
-								break
-			
-			All_examplar = []
-			for cate in Category_splits:
-				All_examplar.extend(Examplar_set[cate])
-			print(f"Data present in {All_task[task_idx]} split: {len(All_examplar)}")
-			dest = os.path.join(dest_root, f'karpathy_train_{All_task[task_idx]}.json')
-			with open(dest, 'w') as f:
-				json.dump(All_examplar, f, indent=4)
+					data_subset.append(_d)
+					num += 1
+					if num >= each_memory:
+						break
+				
+				with open(dest, 'w') as f:
+					json.dump(data_subset, f, indent=4)
+			else:
+				print("File already present")
 
 def inference_qa(image_path, max_new_tokens=20):
 	image = Image.open(image_path).convert("RGB")
@@ -92,9 +90,9 @@ def inference_qa(image_path, max_new_tokens=20):
 	pred_question =  processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 	return pred_question
 
-def inference_cap(images, prompts=None, temp=0.7):
+def inference_cap(images, prompts=None, temp=0.7, max_new_tokens=32):
 	inputs = processor(images, text=prompts, return_tensors="pt", padding=True, truncation=True).to(device)
-	generated_ids = model.generate(**inputs, max_new_tokens=56, num_beams=5, temperature=temp, do_sample=True)
+	generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, num_beams=5, temperature=temp, do_sample=True, repetition_penalty=1.2)
 	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 	if prompts:
 		empty_indices = [index for index, cap in enumerate(captions) if cap.strip() == ""]
@@ -106,11 +104,11 @@ def inference_cap(images, prompts=None, temp=0.7):
 
 
 
-spec_prompt_sing = ["the {noun} in the image is", "the {noun} in the image is doing", "the {noun} in the image is wearing a", "the {noun} in the image seems", ]
-spec_prompt_mult = ["the {noun} in the image are", "the {noun} in the image are doing", "the {noun} in the image are wearing", "the {noun} in the image seem",]
+spec_prompt_sing = ["The {noun} in the image is", "The {noun} in the image is doing", "The {noun} in the image is wearing a", "The {noun} in the image seems", ]
+spec_prompt_mult = ["The {noun} in the image are", "The {noun} in the image are doing", "The {noun} in the image are wearing", "The {noun} in the image seem",]
 
 def generate_prompts(features):
-	prompts = ["The image is of", "The place shown in the image is", "The color of", "the image is set in", "the image is taken during", "In the background is", 'On the right of']
+	prompts = ["The place shown in the image is", "The color of", 'On the right of', 'On the left of', 'The weather is']
 	for noun, number in features['nouns']:
 		if number == 'plural':
 			if noun in ['man', 'woman', 'father', 'daughter','boy', 'girl', 'person', 'child', 'baby', 'animal', 'dog', 'cat', 'zebra', 'giraffe']:
@@ -137,11 +135,18 @@ def extract_features(sentence):
 
 
 if __name__ == "__main__":
-	path = f"../datasets/npy/"
-	dest_root = f"../datasets/vqa/npy_cap"
+	# import argparse
+	# parser = argparse.ArgumentParser(description="Process some integers.")
+	# parser.add_argument('--split', dest='split', default='train', type=str,
+ #                        help='Disable the splitting feature (default is to enable splitting)')
+	# pargs = parser.parse_args()
+	source = f"../datasets/npy/function"
+	dest_root = f"../datasets/npy_cap/function"
 	os.makedirs(dest_root, exist_ok=True)
-	copy_val_files(path, dest_root)
-	# create_rehearsal_memory(dest_root)
+	# copy_val_files(source, dest_root)
+	print("Creating rehearsal")
+	tasks = Sg_task['function']['oarlks']
+	# create_rehearsal_memory(source, dest_root, tasks)
 	model_name = "Salesforce/blip2-opt-2.7b"
 	model, processor = get_model(model_name)
 
@@ -149,37 +154,50 @@ if __name__ == "__main__":
 	task2id = {All_task[i]:i for i in range(len(All_task))}
 	id2task = {v:k for k, v in task2id.items()}
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
-	task = All_task[task_idx]
+	task_idx = 2
+	task = tasks[task_idx]
+	split = 'train'
 	# task_idx = 0
 	if task_idx > -1:
-		fname = f"fcl_mmf_{task}_train.json"
-		source = os.path.join(path, fname)
-		dest = os.path.join(dest_root, fname)
-		
-		data_subset = np.load()
-		random.shuffle(data_subset)
+		fname = f"fcl_mmf_{task}_{split}"
+		if 'train' in fname:
+			fname = fname +'.json'
+			dest = os.path.join(dest_root, fname)
+			with open(dest, 'r') as f:
+				data_subset = json.load(f)
+		elif 'val' in fname:
+			fname = fname +'.npy'
+			dest = os.path.join(dest_root, fname)
+			data_subset = np.load(dest, allow_pickle=True)
+		print(f"Loaded {dest}")
 		new_data = []
 		count=0
 		for _d in tqdm(data_subset):
-			img_name = f"{_d['img_id']}.jpg"
-			split = "train" if 'train2014' in img_name else 'val'
-			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
+			img_name = f"{_d['image_id']}.jpg"
+			if task_idx != 5:
+				image_dir = 'gvqa'
+			else:
+				image_dir = f"textvqa_train"
+			img_path = os.path.join(f"../datasets/{image_dir}", img_name)
 			image = Image.open(img_path).convert("RGB")
-			initial_caption = inference_cap(image, temp=2.5)
-			cap_list = []
-			# cap_dict[img_name]["captions"] = [initial_caption]
-			cap_list.append(initial_caption)
-			features = extract_features(initial_caption)
-			prompts = generate_prompts(features)
-			num_prompts = len(prompts)
-			images = num_prompts * [image]
-			caps = inference_cap(images, prompts,temp=1.8)
-			cap_list.extend(caps)
-			caption = '. '.join([item.capitalize() for item in cap_list])
+			import pdb;pdb.set_trace()
+			initial_caption = inference_cap(image, temp=2.5, max_new_tokens=48)
+			# cap_list = []
+			# # cap_dict[img_name]["captions"] = [initial_caption]
+			# cap_list.append(initial_caption)
+			# features = extract_features(initial_caption)
+			# prompts = generate_prompts(features)
+			# num_prompts = len(prompts)
+			# images = num_prompts * [image]
+			# caps = inference_cap(images, prompts,temp=1.8, max_new_tokens=32)
+			# cap_list.extend(caps)
+			# caption = '. '.join([item.capitalize() for item in cap_list])
 			# cap_dict[img_name]["captions"].extend(caps)
-			_d['caption'] = caption
+			_d['caption'] = initial_caption
 			new_data.append(_d)
 			count+=1
-		with open(dest, 'w') as f:
+			# if count >= 5000:
+			# 	break
+		with open(os.path.join(dest_root, fname.split('.')[0]+'.json'), 'w') as f:
 			json.dump(new_data, f, indent=4)
-	print(f"Finished. Captions printed{count}")
+	print(f"Finished. Captions printed {count}")

@@ -212,6 +212,10 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--use_gen_data', default=False, type=str2bool)
     parser.add_argument('--create_gen_data', default=False, type=str2bool)
     parser.add_argument('--self_train', default=False, type=str2bool)
+    parser.add_argument('--reverse_caption', default=False, type=str2bool)
+    parser.add_argument('--use_cap_loss', default=False, type=str2bool)
+    parser.add_argument('--two_optim', default=False, type=str2bool)
+    parser.add_argument('--use_biased_data', default=False, type=str2bool)
     # Parse the arguments.
     if parse:
         args = parser.parse_args()

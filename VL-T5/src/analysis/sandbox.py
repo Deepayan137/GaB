@@ -1,20 +1,30 @@
 import spacy
 
-# Load the English NLP model
-nlp = spacy.load('en_core_web_sm')
+# Load the spaCy model
+nlp = spacy.load("en_core_web_sm")
 
-# Example text
-text = "The quick brown fox jumps over the lazy dog who was sleeping on the porch."
+# Input sentence
+sentence = "a cat is sitting in a toilet bowl in a bathroom with a towel on the floor and a toilet paper roll on the wall next to the toilet paper dispenser."
 
-# Process the text with spaCy
-doc = nlp(text)
+# Process the text
+doc = nlp(sentence)
 
-# Extract noun phrases
-noun_phrases = [chunk.text for chunk in doc.noun_chunks]
+# Initialize a dictionary to hold the nouns, verbs, and adjectives
+parts_of_speech = {
+    "nouns": [],
+    "adjectives": [],
+    "verbs": []
+}
 
-# Print the noun phrases
-print("Noun Phrases:", noun_phrases)
+# Extract nouns, adjectives, and verbs
+for token in doc:
+    if token.pos_ == 'NOUN':
+        parts_of_speech["nouns"].append(token.text)
+    elif token.pos_ == 'ADJ':
+        parts_of_speech["adjectives"].append(token.text)
+    elif token.pos_ == 'VERB':
+        parts_of_speech["verbs"].append(token.text)
 
-# Detailed view: print each noun phrase with its root text, root dependency, and root head text
-for chunk in doc.noun_chunks:
-    print(f"Noun phrase: '{chunk.text}' | Root text: '{chunk.root.text}', Root dep: '{chunk.root.dep_}', Root head text: '{chunk.root.head.text}'")
+# Display the parts of speech
+print("Parts of Speech Extracted:")
+print(parts_of_speech)
