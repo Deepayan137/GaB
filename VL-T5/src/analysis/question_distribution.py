@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import json
 from collections import Counter
-
+from tqdm import *
 All_task = ["object", "attribute", "relation", "logical", "knowledge", "scenetext"]
 from src.analysis.qtype_sim import get_embedding, QuestionTypeClassifier
 
@@ -57,12 +57,12 @@ def load_orig_data(task, split):
 
 
 
-def classify_questions(model, questions, task, batch_size=32):
+def get_question_dist(model, questions, task, batch_size=32):
 	model.eval()  # Ensure the model is in evaluation mode
 	label_counts = Counter()
 
 	# Loop through batches of questions
-	for i in range(0, len(questions[task]), batch_size):
+	for i in trange(0, len(questions[task]), batch_size):
 		batch_questions = questions[task][i:i + batch_size]
 		embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
 		embeddings = torch.stack(embeddings)  # Convert list of tensors to a single tensor
@@ -74,8 +74,6 @@ def classify_questions(model, questions, task, batch_size=32):
 			outputs = model(embeddings)  # Get the logits from the model
 			probabilities = torch.softmax(outputs, dim=1)  # Convert logits to probabilities
 			predicted_labels = torch.argmax(probabilities, dim=1)  # Get the index of the max probability
-			if task == 'relation':
-				import pdb;pdb.set_trace()
 		# Update counts for this batch
 		label_counts.update(predicted_labels.cpu().numpy())
 
@@ -103,9 +101,9 @@ if __name__ == "__main__":
 			print("Loading existsing checkpoint")
 			ckpt = torch.load(f'ckpt/{sub_task}.pth', map_location=device)
 			classifier.load_state_dict(ckpt)
-		label_counts_examplar = classify_questions(classifier, examplar, sub_task)
-		label_counts_created = classify_questions(classifier, created, sub_task)
-		label_counts_test = classify_questions(classifier, test_data, sub_task)
+		label_counts_examplar = get_question_dist(classifier, examplar, sub_task)
+		label_counts_created = get_question_dist(classifier, created, sub_task)
+		label_counts_test = get_question_dist(classifier, test_data, sub_task)
 		print(f'for task {sub_task} the distribution of labels in real rehearsal data is {label_counts_examplar}')
 		print(f'for task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
 		print(f'for task {sub_task} the distribution of labels in the test data is {label_counts_test}')

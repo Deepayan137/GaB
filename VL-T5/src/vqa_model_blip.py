@@ -164,16 +164,20 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 	@torch.no_grad()
 	def get_questions(self, batch, **kwargs):
 		self.eval()
+		max_new_tokens = kwargs['max_new_tokens']
 		device = next(self.parameters()).device
 		pixel_values = batch['pixel_values'].to(device)
+		attention_mask = None
+		if 'attention_mask' in batch:
+			attention_mask = batch['attention_mask']
 		query_outputs, vision_outputs = self.get_features(pixel_values)
-		max_new_tokens = 20
 		input_ids = None
 		if 'input_ids' in batch:
 			input_ids = batch['input_ids'].to(device)
 			output = self.generate(query_outputs=query_outputs, 
 				vision_outputs=vision_outputs, 
 				max_new_tokens=max_new_tokens,
+				attention_mask=attention_mask,
 				input_ids=input_ids, 
 				repetition_penalty=1.2,
 				mode='questions')

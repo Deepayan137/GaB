@@ -204,20 +204,8 @@ class SGVQA_memory(Dataset):
 			sample_idx = random.sample(range(num_q), k=1)[0]
 			sent = questions[sample_idx]
 		elif self.args.use_gen_data and self.args.create_gen_data:
-			potential_answer = None
-			for key, value in datum.items():
-				if key.startswith("Q"):
-					sent = datum[key]
-				if (self.args.self_train and key.startswith("A")):
-					potential_answer = value
-				elif (not self.args.self_train and key.startswith("A")):
-					potential_answer = value
-			if isinstance(potential_answer, list) and potential_answer:
-				answer = potential_answer[0]
-			elif isinstance(potential_answer, str) and potential_answer:
-				answer = potential_answer
-			else:
-				answer = "not sure"
+			sent = datum["Q"]
+			answer = datum ["A"]
 		else:
 			if 'question' in datum:
 				sent = datum['question']

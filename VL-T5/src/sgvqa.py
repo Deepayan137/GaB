@@ -179,15 +179,15 @@ class Trainer(TrainerBase):
 						# Construct the task-specific file path
 						print("Welcome to the rehearsal module")
 						tsk = Sg_task['function']['oarlks'][task_idx]
-						scenario_dir = f'../datasets/npy_cap/{args.scenario}'
+						scenario_dir = f'../datasets/npy_balanced/{args.scenario}'
 						data_info_path = os.path.join(scenario_dir,f'fcl_mmf_{tsk}_train.json')
 						# Load the exemplar data from the file
 						with open(data_info_path, 'r') as file:
 							data = json.load(file)
 						if self.args.create_gen_data:
-							dest = f'../datasets/npy_self/{args.scenario}'
+							dest = f'../datasets/npy_balanced/{args.scenario}'
 							if os.path.exists(os.path.join(dest, f'fcl_mmf_{tsk}_train.json')):
-								print("Loading self generated QA pairs")
+								print(f"Loading self generated QA pairs from {dest}")
 								with open(os.path.join(dest, f'fcl_mmf_{tsk}_train.json'), 'r') as f:
 									All_examplar = json.load(f)
 								if self.args.self_train:

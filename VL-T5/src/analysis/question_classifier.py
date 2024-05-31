@@ -19,50 +19,6 @@ try:
 except RuntimeError:
     pass  
 
-# Load the model and tokenizer
-model_name = "sentence-transformers/all-mpnet-base-v2"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model.to(device)
-print(f"Using:{device}")
-def mean_pooling(model_output, attention_mask):
-    """Apply mean pooling to get the sentence embedding."""
-    token_embeddings = model_output.last_hidden_state
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-    sum_mask = input_mask_expanded.sum(1)
-    return sum_embeddings / torch.clamp(sum_mask, min=1e-9)
-
-def get_embedding(sentence):
-    """Generate a normalized embedding for a single sentence."""
-    # Tokenize the single sentence
-    encoded_input = tokenizer(sentence, padding=True, truncation=True, return_tensors='pt').to(device)
-    with torch.no_grad():
-        model_output = model(**encoded_input)
-    # Mean pooling to get the sentence embedding
-    sentence_embedding = mean_pooling(model_output, encoded_input['attention_mask'])
-    # Normalize the embedding
-    normalized_embedding = F.normalize(sentence_embedding, p=2, dim=1)
-    return normalized_embedding
-
-
-class QuestionTypeClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(QuestionTypeClassifier, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
-        x = self.softmax(x)
-        return x
-
-
 
 cat_dict = {
     "object":
@@ -139,6 +95,52 @@ cat_dict = {
     },
     "knowledge":{},
 }
+
+
+# Load the model and tokenizer
+model_name = "sentence-transformers/all-mpnet-base-v2"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model.to(device)
+print(f"Using:{device}")
+def mean_pooling(model_output, attention_mask):
+    """Apply mean pooling to get the sentence embedding."""
+    token_embeddings = model_output.last_hidden_state
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+    sum_mask = input_mask_expanded.sum(1)
+    return sum_embeddings / torch.clamp(sum_mask, min=1e-9)
+
+def get_embedding(sentence):
+    """Generate a normalized embedding for a single sentence."""
+    # Tokenize the single sentence
+    encoded_input = tokenizer(sentence, padding=True, truncation=True, return_tensors='pt').to(device)
+    with torch.no_grad():
+        model_output = model(**encoded_input)
+    # Mean pooling to get the sentence embedding
+    sentence_embedding = mean_pooling(model_output, encoded_input['attention_mask'])
+    # Normalize the embedding
+    normalized_embedding = F.normalize(sentence_embedding, p=2, dim=1)
+    return normalized_embedding
+
+
+class QuestionTypeClassifier(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(QuestionTypeClassifier, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.softmax(x)
+        return x
+
+
 
 class QtypeDataset(Dataset):
     def __init__(self, task='object', split='train', scenario='function',):

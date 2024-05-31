@@ -6,7 +6,7 @@ import torch
 import pickle
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 All_task = ["object", "attribute", "relation", "logical", "knowledge", "scenetext"]
-
+from src.analysis.qtype_sim import get_embedding, QuestionTypeClassifier
 desired_counts = {
 	"attribute":{
 		"object":{
@@ -90,7 +90,7 @@ def save_to_pickle(data, filename):
 
 
 if __name__ == "__main__":
-	from src.analysis.qtype_sim import get_embedding, QuestionTypeClassifier
+
 	input_dim = 768
 	hidden_dim = 256
 	output_dim = 20
