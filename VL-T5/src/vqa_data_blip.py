@@ -458,11 +458,7 @@ class VQAFineTuneDataset_memory(Dataset):
             
             ###### Text #####
             if self.args.use_gen_data:
-                for key, value in datum.items():
-                    if key.startswith("Q_") and isinstance(value, list):
-                        sent = value[0]
-                    elif key.startswith("Q_") and isinstance(value, str):
-                        sent = value
+                sent = datum["Q"]
             else:
                 if 'sent' in datum:
                     sent = datum['sent']
@@ -499,9 +495,7 @@ class VQAFineTuneDataset_memory(Dataset):
 
             elif self.args.raw_label:
                 if self.args.use_gen_data:
-                    for key in datum.keys():
-                        if key.startswith("A_"):
-                            answer = datum[key][0]
+                    answer = datum ["A"]
                 else:
                     answers = datum['answers']
                     answer = random.choice(answers)['answer']
@@ -521,20 +515,7 @@ class VQAFineTuneDataset_memory(Dataset):
 
             else:
                 if self.args.use_gen_data:
-                    potential_answer= None
-                    for key, value in datum.items():
-                        if not self.args.create_gen_data and key.startswith("A_"):
-                            potential_answer = value
-                        if self.args.self_train and key.startswith("A_self"):
-                            potential_answer = value
-                        elif (not self.args.self_train and key.startswith("A_cap")):
-                            potential_answer = value
-                    if isinstance(potential_answer, list) and potential_answer:
-                        answer = potential_answer[0]
-                    elif isinstance(potential_answer, str) and potential_answer:
-                        answer = potential_answer
-                    else:
-                        answer = "not sure"
+                    answer = datum ["A"]
                     score = 0.0
                     answers = [answer]
                 else:

@@ -98,7 +98,7 @@ class Trainer(TrainerBase):
         from vqa_model import VLT5VQA
         from vqa_model_blip import NaiveBLIP2, BLIP2Prototype
         model_kwargs = {'ft_layers':args.ft_layers, 
-        'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool}
+        'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss}
         if args.prompt_pool:
             print("Activating Learning to Prompt")
         # model_kwargs = {}
@@ -137,8 +137,10 @@ class Trainer(TrainerBase):
             self.regularizer = self.regularizer.to(args.gpu)
         if 'blip' in self.args.backbone:
             self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-            # self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
-            # weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
+            if self.args.use_cap_loss:
+                print("We will use caption loss and two optimizers")
+                self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
+                        weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
             self.lr_scheduler = None
         if args.multiGPU:
             if args.distributed:
@@ -208,13 +210,15 @@ class Trainer(TrainerBase):
                 # Memory
                 if args.memory:
                     if task_idx >0:
+                        # prev_task = self.task_list[task_idx - 1]
+                        # ckpt_path = os.path.join(self.args.output, f'{prev_task}_BEST.pth')
+                        # if os.path.exists(ckpt_path) and ckpt_path != self.args.checkpoint:
+                        #     self.load(ckpt_path)
                         each_memory = int(self.M / task_idx)
                         All_examplar, self.Examplar_set = get_memory_data(args, task_idx, each_memory, self.Examplar_set, self.model, self.processor)
                         print("# The size of the cate Memory:", len(All_examplar))
-                        if args.use_gen_data and args.self_train:
+                        if args.use_gen_data:
                             print("The answers from captioning model will be used to train the model")
-                        elif args.use_gen_data and not args.self_train:
-                            print("Pseudo answers from cl finetuned model will be used")
                     else:
                         All_examplar = []
                         each_memory = 0
@@ -367,7 +371,10 @@ class Trainer(TrainerBase):
                             else:
                                 # Non-distributed, business as usual
                                 loss_meter.update(results['loss'].item())
-                                loss_meter_ques.update(results['loss_cap'].item())
+                                if 'loss_cap' in results:
+                                    loss_meter_ques.update(results['loss_cap'].item())
+                                else:
+                                    loss_meter_ques.update(-1)
                             desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} | Loss Ques {loss_meter_ques.val:.4f}'
                             if mem_batch:
                                 if self.args.distributed:
@@ -447,7 +454,12 @@ class Trainer(TrainerBase):
             (loss_memory_Q_new, loss_memory_V_new) = results['loss_memory_new']
             loss = loss + lambda_Q_new * loss_memory_Q_new + lambda_V_new * loss_memory_V_new
         if 'loss_cap' in results:
-            loss_cap = results['loss_cap']
+            if self.args.use_cap_loss:
+                loss_cap = results['loss_cap']
+                self.optim_question.zero_grad(set_to_none=True)
+                loss_cap.backward(retain_graph=True)
+                self.optim_question.step()
+                loss_cap.detach()
             # loss = loss + loss_cap
         if self.regularizer is not None:
             cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
@@ -480,7 +492,6 @@ class Trainer(TrainerBase):
             self.scaler.update()
         else:  # this
             self.optim.step()
-            # self.optim_question.step()
         if self.lr_scheduler:
             self.lr_scheduler.step()
         for param in self.model.parameters():
@@ -732,7 +743,7 @@ def main_worker(gpu, args):
         #         break
 
         # If a checkpoint is found, load it; otherwise, start training without loading
-        if args.checkpoint:
+        if args.checkpoint != 'None':
             trainer.train(load=True)
         else:
             trainer.train(load=False)

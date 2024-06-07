@@ -2,36 +2,42 @@ import os
 import torch
 import numpy as np
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from tqdm import *
-All_task = ["object", "attribute", "relation", "logical", "knowledge", "scenetext"]
-from src.analysis.qtype_sim import get_embedding, QuestionTypeClassifier
+from src.analysis.question_classifier import get_embedding, QuestionTypeClassifier
+import random
+from sklearn.cluster import KMeans
+sys.path.insert(0, '../')
+from Question_type import *
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def _load_orig_exemplar(task):
-	savepath = f'snap/naiveblip_sgvqa_mem_new/{task}_BEST.pth'
-	ckpt = torch.load(savepath, map_location='cpu')
-	task_idx = All_task.index(task)
-	split=5000//task_idx
-	# Initialize a dictionary to hold the Counters for each sub_task
-	data = {}
-	for i in range(task_idx):
-		sub_task = All_task[i]
-		# Make sure the sub_task key exists in the ckpt['exemplar'] to avoid KeyError
-		if sub_task in ckpt['examplar']:
-			data[sub_task] = ckpt['examplar'][sub_task][:split]
-	new_data={}
-	for key in data:
-		if key not in new_data:
-			new_data[key]=[]
-		for datum in data[key]:
-			new_data[key].append(datum['question'])
-	return new_data
+def label_stats(label_counts):
+	total = sum(label_counts.values())
+	percentages = {label: (count / total * 100) for label, count in label_counts.items()}
+	return percentages
 
+def get_question_dist(predictions):
+	label_counts = Counter()
+	# Update counts for this batch
+	for prediction in predictions:
+		label_counts.update(prediction)
+
+	return label_stats(label_counts)
+
+def _load_classifier_ckpt(classifier, sub_task):
+	ckpt_path =f'ckpt/{sub_task}.pth'
+	if os.path.exists(ckpt_path):
+		print(f"Loading existsing checkpoint @ {ckpt_path}")
+		ckpt = torch.load(f'ckpt/{sub_task}.pth', map_location=device)
+		classifier.load_state_dict(ckpt)
+	else:
+		print("No ckpt found")
+	return classifier
 
 def load_gen_data(task):
-	cap_root = "../datasets/npy_self/function/"
-	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train.json")
+	cap_root = "../datasets/npy_no_ents/function/"
+	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_unbalanced.json")
 	with open(json_path, 'r') as f:
 		data = json.load(f)
 	task_idx = All_task.index(task)
@@ -41,7 +47,7 @@ def load_gen_data(task):
 		if sub_task not in data_:
 			data_[sub_task] = []
 		for datum in data:
-			question_key = f'Q_{sub_task}'
+			question_key = f'Q'
 			if question_key in datum:
 				data_[sub_task].append(datum[question_key])
 	return data_
@@ -49,6 +55,8 @@ def load_gen_data(task):
 def load_orig_data(task, split):
 	np_path = os.path.join('../datasets/npy', 'function', f"fcl_mmf_{task}_{split}.npy")
 	data = np.load(np_path, allow_pickle=True)
+	random.shuffle(data)
+	data = data[:5000]
 	data_ = {}
 	data_[task] = []
 	for datum in data:
@@ -56,11 +64,76 @@ def load_orig_data(task, split):
 	return data_
 
 
+def sample_by_predicted_labels(train_data, predictions, desired_counts, total_target=5000):
+	from collections import defaultdict
+	import random
+	# Mapping from labels to list of indices that have this label
+	label_indices = defaultdict(list)
+	for index, label in enumerate(predictions):
+		label_indices[label].append(index)
+	
+	# Sample indices according to desired counts
+	sampled_indices = []
+	current_total = 0
+	surplus_indices = defaultdict(list)
+	for label, count in desired_counts.items():
+		if label in label_indices:
+			if len(label_indices[label]) >= count:
+				sampled = random.sample(label_indices[label], count)
+				sampled_indices.extend(sampled)
+				current_total += count
+				surplus_indices[label] = [idx for idx in label_indices[label] if idx not in sampled]
+			else:
+				# If there aren't enough data as desired, take all available and print a warning
+				sampled_indices.extend(label_indices[label])
+				current_total += len(label_indices[label])
+				print(f"Warning: Not enough data for label {label}. Needed {count}, got {len(label_indices[label])}.")
+	
+	if current_total < total_target:
+		deficit = total_target - current_total
+		total_surplus = sum(len(indices) for indices in surplus_indices.values())
+		if total_surplus > 0:
+			for label, indices in surplus_indices.items():
+				if deficit <= 0:
+					break
+				surplus_proportion = len(indices) / total_surplus
+				additional_samples = int(deficit * surplus_proportion)
+				additional_samples = min(additional_samples, len(indices))
+				sampled_indices.extend(random.sample(indices, additional_samples))
+				deficit -= additional_samples
+			# if deficit > 0:
+			# 	all_surplus_indices = [idx for indices in surplus_indices.values() for idx in indices]
+			# 	if all_surplus_indices:
+			# 	    additional_samples = random.sample(all_surplus_indices, min(deficit, len(all_surplus_indices)))
+			# 	    sampled_indices.extend(additional_samples)
+			# 	    deficit -= len(additional_samples)
+	sampled_data = [train_data[idx] for idx in sampled_indices]
+	return sampled_data
 
-def get_question_dist(model, questions, task, batch_size=32):
+def cluster_questions(questions, task, batch_size=32, n_clusters=10):
+		# Placeholder for all embeddings
+		all_embeddings = []
+
+		# Generate embeddings for all questions
+		for i in trange(0, len(questions[task]), batch_size):
+			batch_questions = questions[task][i:i + batch_size]
+			embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
+			all_embeddings.extend(embeddings)
+
+		# Stack all embeddings into a single tensor
+		embeddings_tensor = torch.stack(all_embeddings)
+		embeddings_tensor = embeddings_tensor.cpu().numpy()  # Convert to numpy array for KMeans
+
+		# Perform k-means clustering
+		kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embeddings_tensor)
+
+		# Get predicted labels for all questions
+		predicted_labels = kmeans.labels_
+		return predicted_labels
+
+def classify_questions(model, questions, task, batch_size=32):
 	model.eval()  # Ensure the model is in evaluation mode
-	label_counts = Counter()
-
+	predictions = []
 	# Loop through batches of questions
 	for i in trange(0, len(questions[task]), batch_size):
 		batch_questions = questions[task][i:i + batch_size]
@@ -74,39 +147,50 @@ def get_question_dist(model, questions, task, batch_size=32):
 			outputs = model(embeddings)  # Get the logits from the model
 			probabilities = torch.softmax(outputs, dim=1)  # Convert logits to probabilities
 			predicted_labels = torch.argmax(probabilities, dim=1)  # Get the index of the max probability
-		# Update counts for this batch
-		label_counts.update(predicted_labels.cpu().numpy())
+		predictions.extend(predicted_labels.cpu().numpy())
+	return predictions
 
-	return label_stats(label_counts)
 
-def label_stats(label_counts):
-	total = sum(label_counts.values())
-	percentages = {label: (count / total * 100) for label, count in label_counts.items()}
-	return percentages
 
 if __name__ == "__main__":
-	task = 'logical'
-	task_idx = All_task.index(task)
-	examplar = _load_orig_exemplar(task)
-	created = load_gen_data(task)
-	input_dim = 768
-	hidden_dim = 256
-	output_dim = 20 if task != 'logical' else 23
-	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
-	for i in range(task_idx):
-		sub_task = All_task[i]
-		test_data = load_orig_data(sub_task, 'val')
-		if os.path.exists(f'ckpt/{sub_task}.pth'):
-			print("Loading existsing checkpoint")
-			ckpt = torch.load(f'ckpt/{sub_task}.pth', map_location=device)
-			classifier.load_state_dict(ckpt)
-		label_counts_examplar = get_question_dist(classifier, examplar, sub_task)
-		label_counts_created = get_question_dist(classifier, created, sub_task)
-		label_counts_test = get_question_dist(classifier, test_data, sub_task)
-		print(f'for task {sub_task} the distribution of labels in real rehearsal data is {label_counts_examplar}')
-		print(f'for task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
-		print(f'for task {sub_task} the distribution of labels in the test data is {label_counts_test}')
-		# import pdb;pdb.set_trace()
+    strategy = 'classify'
+    task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4))
+    All_task = Sg_task['function']['oarlks']
+    task = All_task[task_idx]  # Simplified to only run for the first task
+    created = load_gen_data(task)
+    input_dim = 768
+    hidden_dim = 256
+    summary_dict = defaultdict(dict)
+    # Loop over all tasks, but limit to the first for simplification
+    for i, sub_task in enumerate(All_task[:task_idx]):
+        output_dim = len(qtype_dict[sub_task])
+        train_data = load_orig_data(sub_task, 'train')
+
+        # Initialize classifier if the strategy is to classify
+        if strategy == 'classify':
+            classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+            classifier = _load_classifier_ckpt(classifier, sub_task)
+            predictions_created = classify_questions(classifier, created, sub_task)
+            predictions_train = classify_questions(classifier, train_data, sub_task)
+        elif strategy == 'cluster':
+            predictions_created = cluster_questions(created, sub_users)
+            predictions_train = cluster_questions(train_data, sub_task)
+
+        label_counts_created = get_question_dist(predictions_created)
+        label_counts_train = get_question_dist(predictions_train)
+
+        # Store results in a more readable format
+        summary_dict[sub_task] = {
+            'balanced': {str(k): v for k, v in label_counts_train.items()},
+            'unbalanced': {str(k): v for k, v in label_counts_created.items()}
+        }
+
+        print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
+        print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_train}')
+
+    # Save results based on strategy
+    file_name = "question_dist_via_clustering.json" if strategy == 'cluster' else "question_dist.json"
+    with open(os.path.join("metrics", f"sgvqa_{task}_{file_name}"), 'w') as f:
+        json.dump(summary_dict, f, indent=4)
 
 

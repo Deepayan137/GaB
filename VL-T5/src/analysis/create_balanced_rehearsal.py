@@ -6,69 +6,84 @@ from tqdm import *
 import torch
 import random
 from collections import defaultdict, Counter
+import copy
+import sys
+sys.path.insert(0, '../')
+from Question_type import *
 
-All_task = ["object", "attribute", "relation", "logical", "knowledge", "scenetext"]
 from tqdm import *
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 from src.analysis.question_classifier import get_embedding, QuestionTypeClassifier
-from src.analysis.question_distribution import  get_question_dist
-from src.analysis.create_biased_rehearsal import classify_questions, sample_by_predicted_labels
+from src.analysis.question_distribution import  get_question_dist, classify_questions, sample_by_predicted_labels, _load_classifier_ckpt
+
+All_task = Sg_task['function']['oarlks']
 
 
-desired_counts = {
-	"attribute":{
-		"object":{
-	    0: int(5000 * 0.4708),
-	    1: int(5000 * 0.34),
-	    2: int(5000 * 0.196),
-	    },
-	},
-	"relation":{
-		"object":{
-		0: int(2500 * 0.47),
-		1: int(2500 * 0.33),
-		2: int(2500 * 0.20),
-		},
-		"attribute":{
-		8: int(2500 * 0.3932),
-		6: int(2500 * 0.0708),
-		7: int(2500 * 0.0820),
-		1: int(2500 * 0.2596),
-		0: int(2500 * 0.1560)
-		}
-	}
-}
-
-
-def _load_ckpt(classifier, sub_task):
-	if os.path.exists(f'ckpt/{sub_task}.pth'):
-		print("Loading existsing checkpoint")
-		ckpt = torch.load(f'ckpt/{sub_task}.pth', map_location=device)
-		classifier.load_state_dict(ckpt)
-	else:
-		print("No ckpt found")
-	return classifier
-
-def balanced_data(task, split, classifier):
+	
+def unbalanced_data(data, task, split):
 	# Define the root path for the captions
-	cap_root = "../datasets/npy_cap_test/function/"
-	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train.json")
-
-	# Load JSON data
-	with open(json_path, 'r') as f:
-		data = json.load(f)
-
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	# Find the task index and prepare to handle the data up to that task
 	task_idx = All_task.index(task)
 	final_data = []
-
+	input_dim = 768
+	hidden_dim = 256
 	# Iterate through each task up to the current task index
 	for i in range(task_idx):
 		sub_task = All_task[i]
-		classifier = _load_ckpt(classifier, sub_task)
-		question_key = f'Q_ents_{sub_task}'
-		answer_key = f'A_ents_{sub_task}'
+		output_dim = len(cat_dict[sub_task])
+		classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+		classifier = _load_classifier_ckpt(classifier, sub_task)
+		question_key = f'Q_{sub_task}'
+		answer_key = f'A_{sub_task}'
+
+		# Filter out data items that don't have both the question_key and answer_key
+		sub_data = [datum for datum in data if question_key in datum and answer_key in datum]
+		# Iterate over each filtered data item to process questions and answers
+		new_data, sub_task_questions = [], []
+		for datum in tqdm(sub_data):
+			new_datum = {key: value for key, value in datum.items() if key not in [question_key, answer_key]}
+			questions = datum.get(question_key, [])
+			answers = datum.get(answer_key, [])
+			# Create QA pairs excluding 'room' from answers
+			qa_pairs = [(q, a) for q, a in zip(questions, answers)]
+
+			# Select a random QA pair if available and add to new_data
+			if qa_pairs:
+				question, answer = random.choice(qa_pairs)
+				new_datum['Q'] = question
+				new_datum['A'] = ' '.join(answer.split(' ')[:2])
+				sub_task_questions.append(question)
+				new_data.append(new_datum)
+		random.shuffle(new_data)
+		new_data = new_data[:split]
+		# Append directly without sampling or balancing the data
+		new_questions={}
+		new_questions[sub_task] = [datum['Q'] for datum in new_data]
+		label_stats = get_question_dist(new_questions[sub_task])
+		print(label_stats)
+		final_data.extend(new_data)
+
+	return final_data
+
+
+def balanced_data_via_clustering(data, task, split):
+	with open(f'metrics/sgvqa_{task}_question_dist_via_clustering.json', 'r') as f:
+		desired_counts = json.load(f)
+	# Define the root path for the captions
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	# Find the task index and prepare to handle the data up to that task
+	task_idx = All_task.index(task)
+	final_data = []
+	# Iterate through each task up to the current task index
+	for i in range(task_idx):
+		sub_task = All_task[i]
+		desired_task_counts = desired_counts[sub_task]['balanced']
+		desired_task_counts = {int(k):int(v*split/100.) for k,v in desired_task_counts.items()}
+		output_dim = len(cat_dict[sub_task])
+		question_key = f'Q_{sub_task}'
+		answer_key = f'A_{sub_task}'
 
 		# Filter out data items that don't have both the question_key and answer_key
 		sub_data = [datum for datum in data if question_key in datum and answer_key in datum]
@@ -80,7 +95,57 @@ def balanced_data(task, split, classifier):
 			questions = datum.get(question_key, [])
 			answers = datum.get(answer_key, [])
 			# Create QA pairs excluding 'room' from answers
-			qa_pairs = [(q, a) for q, a in zip(questions, answers) if a != 'room']
+			qa_pairs = [(q, a) for q, a in zip(questions, answers)]
+
+			# Select a random QA pair if available and add to new_data
+			if qa_pairs:
+				question, answer = random.choice(qa_pairs)
+				new_datum['Q'] = question
+				new_datum['A'] = ' '.join(answer.split(' ')[:2])
+				sub_task_questions.append(question)
+				new_data.append(new_datum)
+		predictions = cluster_questions(sub_task_questions, sub_task)
+		new_data = sample_by_predicted_labels(new_data, predictions, desired_task_counts, total_target=split)
+		new_questions={}
+		new_questions[sub_task] = [datum['Q'] for datum in new_data]
+		label_stats = get_question_dist(new_questions[sub_task])
+		print(label_stats)
+		final_data.extend(new_data)
+	
+	return final_data
+
+def balanced_data_via_classifier(data, task, split):
+	with open(f'metrics/sgvqa_{task}_question_dist.json', 'r') as f:
+		desired_counts = json.load(f)
+	# Define the root path for the captions
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	# Find the task index and prepare to handle the data up to that task
+	task_idx = All_task.index(task)
+	final_data = []
+	input_dim = 768
+	hidden_dim = 256
+	# Iterate through each task up to the current task index
+	for i in range(task_idx):
+		sub_task = All_task[i]
+		desired_task_counts = desired_counts[sub_task]['balanced']
+		desired_task_counts = {int(k):int(v*split/100.) for k,v in desired_task_counts.items()}
+		output_dim = len(cat_dict[sub_task])
+		classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+		classifier = _load_classifier_ckpt(classifier, sub_task)
+		question_key = f'Q_{sub_task}'
+		answer_key = f'A_{sub_task}'
+
+		# Filter out data items that don't have both the question_key and answer_key
+		sub_data = [datum for datum in data if question_key in datum and answer_key in datum]
+		count = 0
+		# Iterate over each filtered data item to process questions and answers
+		new_data, sub_task_questions = [], []
+		for datum in tqdm(sub_data):
+			new_datum = {key: value for key, value in datum.items() if key not in [question_key, answer_key]}
+			questions = datum.get(question_key, [])
+			answers = datum.get(answer_key, [])
+			# Create QA pairs excluding 'room' from answers
+			qa_pairs = [(q, a) for q, a in zip(questions, answers)]
 
 			# Select a random QA pair if available and add to new_data
 			if qa_pairs:
@@ -90,28 +155,46 @@ def balanced_data(task, split, classifier):
 				sub_task_questions.append(question)
 				new_data.append(new_datum)
 		predictions = classify_questions(classifier, sub_task_questions, sub_task)
-		new_data = sample_by_predicted_labels(new_data, predictions, desired_counts[task][sub_task])
+		new_data = sample_by_predicted_labels(new_data, predictions, desired_task_counts, total_target=split)
 		new_questions={}
 		new_questions[sub_task] = [datum['Q'] for datum in new_data]
-		label_stats = get_question_dist(classifier, new_questions, sub_task)
+		label_stats = get_question_dist(new_questions[sub_task])
 		print(label_stats)
 		final_data.extend(new_data)
 	
 	return final_data
 
 if __name__ == "__main__":
-	
-	input_dim = 768
-	hidden_dim = 256
-	output_dim = 20
-	classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+	strategy = 'balance_via_classifer'
+	mem_sizes = [5000]
+	for mem_size in mem_sizes:
+		print(f"Memory Size is {mem_size}")
+		for task_idx in range(1, 5):
+			task = All_task[task_idx - 1]  # Task indices adjusted for 0-based indexing
+			method = 'no_ents'
+			split = int(mem_size / task_idx)
+			cap_root = f"../datasets/npy_{method}/function/"
+			json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated.json")
 
+			print(f"Loading data from {json_path}")
+			with open(json_path, 'r') as file:
+				data = json.load(file)
 
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2)) 
-	task =All_task[task_idx]
-	split = int(5000/task_idx)
-	rehearsal_data =  balanced_data(task, split, classifier)
-	print(f"No. of samples present in {task} data file:{len(rehearsal_data)}")
-	savepath = os.path.join(f'../datasets/npy_balanced/function', f'fcl_mmf_{task}_train.json')
-	with open(savepath, 'w') as f:
-		json.dump(rehearsal_data, f, indent=4)
+			print(f"Number of data points present in original data: {len(data)}")
+			if strategy == 'balance_via_classifer':
+				rehearsal_data = balanced_data_via_classifier(data, task, split)
+				balance_status = 'balanced'
+			elif strategy == 'balance_via_classifer':
+				rehearsal_data = balanced_data_via_clustering(data, task, split)
+				balance_status = 'cluster_balanced'
+			else:
+				rehearsal_data = unbalanced_data(data, task, split)
+				balance_status = 'unbalanced'
+			print(f"No. of samples present in {task} data file: {len(rehearsal_data)}")
+			savepath_suffix = f"{int(mem_size/1000)}k" if mem_size != 10000 else "10k"
+			savepath = json_path.replace('_updated.json', f'{balance_status}_{savepath_suffix}.json')
+
+			with open(savepath, 'w') as f:
+				json.dump(rehearsal_data, f, indent=4)
+
+			print("####### Finished #######")

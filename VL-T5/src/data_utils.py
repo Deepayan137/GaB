@@ -33,23 +33,23 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 	print("Welcome to the rehearsal memory module")
 	if args.use_gen_data:
 		print("We will use Synthetic QA pairs")
-		if args.create_gen_data:
-			task = All_task[task_idx]
-			dest = '../datasets/vqa/Partition_Q_V2_subset_ST/'
-			if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
-				print(f"Synthetic QA pairs not found so creating  for task {task}")
-				create_rehearsal_data(args, task_idx, model, processor, dest)
-				print("Data creation completed, will load blip generated QA pairs")
-		else:
-			print("Loading Llama generated QA pairs")
-			dest = '../datasets/vqa/Partition_Q_V2_llamaQA'
+		task = All_task[task_idx]
+		dest = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
+			print(f"Synthetic QA pairs not found so creating  for task {task}")
+			create_rehearsal_data(args, task_idx, model, processor, dest)
 		each_memory = 5000
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		data_info_path = (f'{dest}/karpathy_train_' + f'{All_task[task_idx]}.json')
+		if args.not_balanced:
+			fname = f'{All_task[task_idx]}unbalanced.json'
+		else:
+			fname = f'{All_task[task_idx]}balanced.json'
+		data_info_path = (f'{dest}/karpathy_train_' + fname)
 	else:
-		print("Loading real QA pairs from previos tasks")
+		print("Loading real QA pairs from previous tasks")
 		dest = '../datasets/vqa/Partition_Q_V2/'
 		data_info_path = (f'{dest}/karpathy_train_' + f'{All_task[task_idx - 1]}.json')
+	print(f"Loading data from {data_info_path}")
 	with open(data_info_path) as f:
 		data_info_dicts = json.load(f)
 	random.shuffle(data_info_dicts)
@@ -85,7 +85,7 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 				All_examplar += Examplar_set[E_set]
 	else:
 		All_examplar = data_info_dicts[:each_memory]
-	print("# The size of the cate Memory:", len(All_examplar))			
+	print("# The size of the cate Memory:", len(All_examplar))
 	return All_examplar, Examplar_set
 
 def post_process_answer(answer):

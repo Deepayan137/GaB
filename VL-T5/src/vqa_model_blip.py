@@ -105,9 +105,11 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		label2ans=None, 
 		pool_size=None,
 		prompt_pool=False,
+		use_cap_loss=False,
 		ft_layers='query_tokens',):
 		super().__init__(config, pool_size, prompt_pool)
 		from transformers import AutoProcessor
+		self.use_cap_loss = use_cap_loss
 		self.num_answers = num_answers
 		self.label2ans = label2ans
 		self.bce_loss = nn.BCEWithLogitsLoss()
@@ -165,6 +167,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 	def get_questions(self, batch, **kwargs):
 		self.eval()
 		max_new_tokens = kwargs['max_new_tokens']
+
 		device = next(self.parameters()).device
 		pixel_values = batch['pixel_values'].to(device)
 		attention_mask = None
@@ -174,19 +177,9 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		input_ids = None
 		if 'input_ids' in batch:
 			input_ids = batch['input_ids'].to(device)
-			output = self.generate(query_outputs=query_outputs, 
-				vision_outputs=vision_outputs, 
-				max_new_tokens=max_new_tokens,
-				attention_mask=attention_mask,
-				input_ids=input_ids, 
-				repetition_penalty=1.2,
-				mode='questions')
+			output = self.generate(query_outputs=query_outputs, vision_outputs=vision_outputs, max_new_tokens=max_new_tokens,attention_mask=attention_mask,input_ids=input_ids, repetition_penalty=1.2,mode='questions')
 		else:
-			output = self.generate(query_outputs=query_outputs, 
-				vision_outputs=vision_outputs, 
-				max_new_tokens=max_new_tokens,
-				repetition_penalty=1.2,
-				mode='questions')
+			output = self.generate(query_outputs=query_outputs, vision_outputs=vision_outputs, max_new_tokens=max_new_tokens,repetition_penalty=1.2, mode='questions')
 		result = {}
 		result['token_ids'] = output
 		result['questions'] = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
@@ -239,7 +232,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		result = {
 			'loss': loss
 		}
-		if 'cap_ids' in batch:
+		if 'cap_ids' in batch and self.use_cap_loss:
 			cap_ids = batch['cap_ids'].to(device)
 			cap_labels = cap_ids
 			output_cap = self(

@@ -50,48 +50,48 @@ cat_dict = {
             "{'detailed': 'state', 'semantic': 'attr', 'structural': 'query'}":17,
             "{'detailed': 'companyChoose', 'semantic': 'attr', 'structural': 'choose'}":18,
             "{'detailed': 'stateChoose', 'semantic': 'attr', 'structural': 'choose'}":19
-        },
+    },
     "relation":{
-    "{'detailed': 'relO', 'semantic': 'rel', 'structural': 'query'}":0,
-    "{'detailed': 'relS', 'semantic': 'rel', 'structural': 'query'}":1,
-    "{'detailed': 'directOf', 'semantic': 'attr', 'structural': 'query'}":2,
-    "{'detailed': 'how', 'semantic': 'attr', 'structural': 'query'}":3,
-    "{'detailed': 'chooseAttr', 'semantic': 'attr', 'structural': 'choose'}":4,
-    "{'detailed': 'categoryRelS', 'semantic': 'rel', 'structural': 'query'}":5,
-    "{'detailed': 'directWhich', 'semantic': 'attr', 'structural': 'query'}":6,
-    "{'detailed': 'relVerify', 'semantic': 'rel', 'structural': 'verify'}":7,
-    "{'detailed': 'activity', 'semantic': 'attr', 'structural': 'query'}":8,
-    "{'detailed': 'materialChoose', 'semantic': 'attr', 'structural': 'choose'}":9,
-    "{'detailed': 'material', 'semantic': 'attr', 'structural': 'query'}":10,
-    "{'detailed': 'categoryRelO', 'semantic': 'rel', 'structural': 'query'}":11,
-    "{'detailed': 'relVerifyCr', 'semantic': 'rel', 'structural': 'verify'}":12,
-    "{'detailed': 'relChooser', 'semantic': 'rel', 'structural': 'choose'}":13,
-    "{'detailed': 'relVerifyCo', 'semantic': 'rel', 'structural': 'verify'}":14,
-    "{'detailed': 'activityChoose', 'semantic': 'attr', 'structural': 'choose'}":15,
-    "{'detailed': 'sameRelate', 'semantic': 'rel', 'structural': 'query'}":16,
-    "{'detailed': 'categoryRelOChoose', 'semantic': 'rel', 'structural': 'choose'}":17,
-    "{'detailed': 'dir', 'semantic': 'rel', 'structural': 'query'}":18,
-    "{'detailed': 'sameMaterialRelate', 'semantic': 'rel', 'structural': 'query'}":19,
-    "{'detailed': 'positionChoose', 'semantic': 'attr', 'structural': 'choose'}":20,
-    "{'detailed': 'existRelS', 'semantic': 'rel', 'structural': 'verify'}":21,
-    "{'detailed': 'company', 'semantic': 'attr', 'structural': 'query'}":22
+            "{'detailed': 'relO', 'semantic': 'rel', 'structural': 'query'}":0,
+            "{'detailed': 'relS', 'semantic': 'rel', 'structural': 'query'}":1,
+            "{'detailed': 'directOf', 'semantic': 'attr', 'structural': 'query'}":2,
+            "{'detailed': 'how', 'semantic': 'attr', 'structural': 'query'}":3,
+            "{'detailed': 'chooseAttr', 'semantic': 'attr', 'structural': 'choose'}":4,
+            "{'detailed': 'categoryRelS', 'semantic': 'rel', 'structural': 'query'}":5,
+            "{'detailed': 'directWhich', 'semantic': 'attr', 'structural': 'query'}":6,
+            "{'detailed': 'relVerify', 'semantic': 'rel', 'structural': 'verify'}":7,
+            "{'detailed': 'activity', 'semantic': 'attr', 'structural': 'query'}":8,
+            "{'detailed': 'materialChoose', 'semantic': 'attr', 'structural': 'choose'}":9,
+            "{'detailed': 'material', 'semantic': 'attr', 'structural': 'query'}":10,
+            "{'detailed': 'categoryRelO', 'semantic': 'rel', 'structural': 'query'}":11,
+            "{'detailed': 'relVerifyCr', 'semantic': 'rel', 'structural': 'verify'}":12,
+            "{'detailed': 'relChooser', 'semantic': 'rel', 'structural': 'choose'}":13,
+            "{'detailed': 'relVerifyCo', 'semantic': 'rel', 'structural': 'verify'}":14,
+            "{'detailed': 'activityChoose', 'semantic': 'attr', 'structural': 'choose'}":15,
+            "{'detailed': 'sameRelate', 'semantic': 'rel', 'structural': 'query'}":16,
+            "{'detailed': 'categoryRelOChoose', 'semantic': 'rel', 'structural': 'choose'}":17,
+            "{'detailed': 'dir', 'semantic': 'rel', 'structural': 'query'}":18,
+            "{'detailed': 'sameMaterialRelate', 'semantic': 'rel', 'structural': 'query'}":19,
+            "{'detailed': 'positionChoose', 'semantic': 'attr', 'structural': 'choose'}":20,
+            "{'detailed': 'existRelS', 'semantic': 'rel', 'structural': 'verify'}":21,
+            "{'detailed': 'company', 'semantic': 'attr', 'structural': 'query'}":22
     },
     "logical":{
-        "{'detailed': 'twoDifferentC', 'semantic': 'attr', 'structural': 'compare'}":0,
-        "{'detailed': 'twoSame', 'semantic': 'attr', 'structural': 'compare'}":1,
-        "{'detailed': 'twoCommon', 'semantic': 'attr', 'structural': 'compare'}":2,
-        "{'detailed': 'twoDifferent', 'semantic': 'attr', 'structural': 'compare'}":3,
-        "{'detailed': 'diffAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":4,
-        "{'detailed': 'sameAnimals', 'semantic': 'attr', 'structural': 'compare'}":5,
-        "{'detailed': 'twoSameC', 'semantic': 'attr', 'structural': 'compare'}":6,
-        "{'detailed': 'sameAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":7,
-        "{'detailed': 'twoSameMaterialC', 'semantic': 'attr', 'structural': 'compare'}":8,
-        "{'detailed': 'twoSameMaterial', 'semantic': 'attr', 'structural': 'compare'}":9,
-        "{'detailed': 'comparativeChoose', 'semantic': 'attr', 'structural': 'compare'}":10,
-        "{'detailed': 'sameGenderC', 'semantic': 'attr', 'structural': 'compare'}":11,
-        "{'detailed': 'sameGender', 'semantic': 'attr', 'structural': 'compare'}":12,
-        "{'detailed': 'diffAnimals', 'semantic': 'attr', 'structural': 'compare'}":13,
-        "{'detailed': 'diffGender', 'semantic': 'attr', 'structural': 'compare'}":14
+            "{'detailed': 'twoDifferentC', 'semantic': 'attr', 'structural': 'compare'}":0,
+            "{'detailed': 'twoSame', 'semantic': 'attr', 'structural': 'compare'}":1,
+            "{'detailed': 'twoCommon', 'semantic': 'attr', 'structural': 'compare'}":2,
+            "{'detailed': 'twoDifferent', 'semantic': 'attr', 'structural': 'compare'}":3,
+            "{'detailed': 'diffAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":4,
+            "{'detailed': 'sameAnimals', 'semantic': 'attr', 'structural': 'compare'}":5,
+            "{'detailed': 'twoSameC', 'semantic': 'attr', 'structural': 'compare'}":6,
+            "{'detailed': 'sameAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":7,
+            "{'detailed': 'twoSameMaterialC', 'semantic': 'attr', 'structural': 'compare'}":8,
+            "{'detailed': 'twoSameMaterial', 'semantic': 'attr', 'structural': 'compare'}":9,
+            "{'detailed': 'comparativeChoose', 'semantic': 'attr', 'structural': 'compare'}":10,
+            "{'detailed': 'sameGenderC', 'semantic': 'attr', 'structural': 'compare'}":11,
+            "{'detailed': 'sameGender', 'semantic': 'attr', 'structural': 'compare'}":12,
+            "{'detailed': 'diffAnimals', 'semantic': 'attr', 'structural': 'compare'}":13,
+            "{'detailed': 'diffGender', 'semantic': 'attr', 'structural': 'compare'}":14
     },
     "knowledge":{},
 }
@@ -193,12 +193,13 @@ def evaluate_model(classifier, val_loader):
 
 def main():
     # Parameters
-    task='logical'
+    task='object'
     input_dim = 768  # Adjust based on your embeddings
     hidden_dim = 256 # You can tune this
     output_dim = len(cat_dict[task].keys())  # Adjust based on the number of question types
     
     # Initialize model, loss, and optimizer
+    print(f"Building a classifier for task {task} with {output_dim} classes")
     classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
     train_loader = get_dataloader(task=task, split='train')
     val_loader = get_dataloader(task=task, split='val')
@@ -208,11 +209,11 @@ def main():
     #     classifier.load_state_dict(ckpt)
     # accuracy=evaluate_model(classifier, val_loader)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(classifier.parameters(), lr=0.001)
+    optimizer = optim.Adam(classifier.parameters(), lr=0.0001)
     
     best = 0.0
     patience_counter = 0
-    patience = 5
+    patience = 3
     for epoch in range(0, 20):
         classifier.train()
         for batch in tqdm(train_loader):

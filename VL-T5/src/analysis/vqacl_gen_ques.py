@@ -10,7 +10,7 @@ from src.vqa_model_blip import NaiveBLIP2
 from src.param import parse_args
 import sys
 sys.path.insert(0, '../')
-from Question_type import Sg_task, qtype_dict
+from Question_type import *
 nlp = spacy.load("en_core_web_sm")
 args = parse_args()
 
@@ -54,23 +54,7 @@ class GenQues:
 
 		# Store only the top k answers
 		self.answer_list = sorted_answers[:k]
-	
-	def _load_qtype_stats(self, task):
-		if task == 'object':
-			elements = [0, 1, 2]  # Corrected
-			weights = [0.4612, 0.3348, 0.204]  # Directly use given percentages
-		elif task == 'attribute':
-			elements = [0, 1, 4, 5, 6, 7, 8, 11]
-			weights = [0.1788, 0.2464, 0.1112, 0.0148, 0.054, 0.0796, 0.2892, 0.026]  # Corrected weights
-		elif task == 'relation':
-			elements = [0, 1, 5, 7, 13]
-			weights = [0.1975, 0.2329, 0.2563, 0.2311, 0.0822]  # Adjusted for sum = 1
-		elif task == 'logical':
-			elements = [0, 2, 3, 6, 10]
-			weights = [0.08, 0.32, 0.1344, 0.232, 0.2336]  # Adjusted for sum = 1
-		weights = [w / sum(weights) for w in weights]  # Normalize weights to sum to 1
-		sampled_element = random.choices(elements, weights=weights, k=1)[0]
-		return sampled_element
+
 
 	def clean_question(self, output):
 		# Define the keyword to identify the part of the string to remove
@@ -91,7 +75,7 @@ class GenQues:
 			# Return the trimmed text if it doesn't start with 'by'
 			return remaining_part
 
-	def inference_qa(self, image_path, datum, task, max_new_tokens=25, method='no_ents'):
+	def inference_qa(self, image_path, datum, task, max_new_tokens=25):
 		"""
 		Generate question-answer pairs based on the provided image and method.
 		"""
@@ -100,56 +84,12 @@ class GenQues:
 		except Exception as e:
 			print(f"Error opening image: {e}")
 			return []
+		inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
+		batch = {'pixel_values': inputs["pixel_values"]}
+		output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
+		question, answer = output['questions'][0].split('?')
+		return [(question.strip()+'?', answer.strip())]
 
-		if method in ['ents', 'ents_with_caption']:
-			entities = datum['entities']
-			if task == 'relation':
-				elements = ['no', 'yes', 'left', 'right']
-				weights = [3, 3, 1, 1]
-				sampled_element = random.choices(elements, weights=weights, k=1)[0]
-				entities.append(sampled_element)
-			elif task == 'logical':
-				elements = ['no', 'yes', 'color', 'material']
-				weights = [4.6, 4.8, 3.8, 2.2]
-				sampled_element = random.choices(elements, weights=weights, k=1)[0]
-				entities.append(sampled_element)
-			prompts, answers = [], []
-			
-			if entities:
-				prompts, answers = self.generate_prompts(entities, task, caption=datum.get('caption') if method == 'ents_with_caption' else None)
-			
-			if not prompts:
-				return []
-			max_length = 32 if method == 'ents' else 72
-			inputs = self.processor([image] * len(prompts), text=prompts, truncation=True, padding=True, return_tensors="pt", max_length=max_length).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			questions = output['questions']
-			cleaned_pairs = []
-			for question, answer in zip(questions, answers):
-				if question and question != '.':
-					cleaned_question = self.clean_question(question)
-					cleaned_answer = answer.strip()
-					cleaned_pairs.append((cleaned_question, cleaned_answer))	
-			return cleaned_pairs
-		elif method == 'qtype':
-			qtype = self._load_qtype_stats(task)
-			prompt = f"Question Type:{qtype} Question:"
-			inputs = self.processor(image, text=prompt,truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			try:
-				question, answer = output['questions'][0].split('Answer:')
-				return [(question.strip(), answer.strip())]
-			except :
-				print("ooops")
-				return None
-		else:
-			inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"]}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			question, answer = output['questions'][0].split('?')
-			return [(question.strip()+'?', answer.strip())]
 
 	def generate_prompts(self, entities, task, caption=None):
 		"""
@@ -173,46 +113,78 @@ class GenQues:
 		answer = temp.split('Answer:')[-1]
 		return [(question.strip(), answer.strip())]
 
+def _load_data(root, task_idx):
+	root = "../datasets/vqa/Partition_Q_V2/karpathy_train_"
+	json_path = root + All_task[task_idx] + '.json'
+
+	Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
+	with open(json_path, 'r') as f:
+		data_info_dicts = json.load(f)
+	random.shuffle(data_info_dicts)
+	if task_idx != 9:
+		each_memory = 20000
+	else:
+		each_memory = len(data_info_dicts)
+	each_memory_for_cate = int(each_memory / len(Category_splits))
+	for cate in Category_splits:
+		num = 0
+		for _d in data_info_dicts:
+			img_id = _d['img_id']
+			if img_id in ImgId_cate_map:
+				if ImgId_cate_map[img_id] in Category_splits[cate]:
+					Examplar_set[cate].append(_d)
+					num += 1
+					if num >= each_memory_for_cate:
+						break
+	All_data = []
+	for key in Examplar_set:
+		All_data += Examplar_set[key]
+	
+	return All_data
+
 if __name__ == "__main__":
-	path = "../datasets/npy_cap_all/function"
+	path = "../datasets/vqa/Partition_Q_V2/"
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
-	method = 'qtype'
-	task = Sg_task['function']['oarlks'][task_idx]
-	split = int(20000/task_idx)
-	fname = f"fcl_mmf_{task}_train_updated.json"
+	task = All_task[task_idx]
+
+	fname = f"karpathy_train_{task}.json"
 	source = os.path.join(path, fname)
-	dest_dir = f'../datasets/npy_{method}/function'
+	dest_dir = f'../datasets/vqa/Partition_Q_V2_no_ents/'
 	os.makedirs(dest_dir, exist_ok=True)
 	dest = os.path.join(f'{dest_dir}', fname)
-	with open(source, 'r') as f:
-		data = json.load(f)
-	savepath = f'snap/naiveblip_sgvqa_{method}/'  
+	data = _load_data(path, task_idx)
+	savepath = f'snap/naiveblip_cl_no_ents/'  
 	gen_ques = GenQues(savepath)
 	incorrect = 0
 	new_data = []
+	if task != 'q_causal':
+		partition = int(20000/task_idx)
+	else:
+		partition = int(len(data)/task_idx)
 	for i in range(task_idx):
-		qg_task = Sg_task['function']['oarlks'][i]
-		start_idx = i * split
-		end_idx = start_idx + split
+		qg_task = All_task[i]
+		start_idx = i * partition
+		end_idx = start_idx + partition
 		print(f"Now task is {task} and question generation will be from {qg_task}")
 		print(f"start idx: {start_idx}")
 		print(f"end idx: {end_idx}")
 		data_subset = data[start_idx:end_idx]
 		gen_ques._load_model(qg_task)
-		gen_ques._load_answers(qg_task)
+		# gen_ques._load_answers(qg_task)
 		print(f'Number of samples: {len(data_subset)}')
 		for _d in tqdm(data_subset):
-			img_name = f"{_d['image_id']}.jpg"
-			img_path = os.path.join("../datasets/gvqa/", img_name)
-			pairs = gen_ques.inference_qa(img_path, _d, qg_task, method=method)
+			img_name = f"{_d['img_id']}.jpg"
+			split = "train" if 'train2014' in img_name else 'val'
+			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
+			pairs = gen_ques.inference_qa(img_path, _d, qg_task)
 			if pairs != None and len(pairs)>0 :
 				questions, answers = zip(*pairs)
-				_d[f'Q_{qg_task}'] = questions
-				_d[f'A_{qg_task}'] = answers
-				new_data.append(_d)
+				if not "" in answers or not "" in answers:
+					_d[f'Q_{qg_task}'] = questions
+					_d[f'A_{qg_task}'] = answers
+					new_data.append(_d)
 			else:
 				incorrect +=1
 	print(f"Incorrect: {incorrect} in {len(data)} samples")
 	with open(dest, 'w') as f:
 		json.dump(new_data, f, indent=4)
-		
