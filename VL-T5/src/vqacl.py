@@ -765,7 +765,7 @@ def main_worker(gpu, args):
 
     else:
         if args.checkpoint!='None':
-            task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0)) 
+            task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9)) 
             task = All_task[task_idx]
             args.checkpoint = f'{args.output}/{task}_LAST'
             print(args.checkpoint)
@@ -793,6 +793,16 @@ if __name__ == "__main__":
     args_dict = vars(args)
     if not os.path.exists(args.output):
         os.makedirs(args.output, exist_ok=True)
+    
+    args_output_path = os.path.join(args.output, 'q_recognition_LAST.pth')
+    source_path = 'snap/naiveblip_cl_no_ents/q_recognition_LAST.pth'
+    if not os.path.exists(args_output_path):
+        try:
+            shutil.copyfile(source_path, args_output_path)
+            print(f"Successfully copied {source_path} to {args_output_path}")
+        except Exception as e:
+            print(f"Failed to copy file: {e}")
+
     with open(f'{args.output}/config.json', 'w') as f:
         json.dump(args_dict, f, indent=4)
     if args.local_rank in [0, -1]:

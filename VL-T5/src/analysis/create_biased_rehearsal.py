@@ -9,8 +9,8 @@ All_task = ["object", "attribute", "relation", "logical", "knowledge", "scenetex
 from src.analysis.question_classifier import get_embedding, QuestionTypeClassifier
 from src.analysis.question_distribution import classify_questions, sample_by_predicted_labels
 import sys
-sys.insert.path(0, '../')
-from Question_type import cat_dict
+sys.path.insert(0, '../')
+from Question_type import qtype_dict
 desired_counts = {
     "attribute": {
         "object": {

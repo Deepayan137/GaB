@@ -29,6 +29,33 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 MODEL_DIR="./llama-2-7b-chat-hf"
 All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 
+def build_data_info_path(args, scenario_dir, tsk):
+		# Define the suffix based on M
+		suffix_mapping = {
+		    5000: '_5k',
+		    1000: '_1k',
+		    2500: '_2k',
+		    10000: '_10k',
+		    20000: '_20k',
+		}
+
+		# Determine the balance type
+		if args.balance_strategy == "classifier":
+			balance_type = "balanced"
+		elif args.balance_strategy == "cluster":
+			balance_type = "cluster_balanced"
+		else:
+			balance_type = "unbalanced"
+
+		# Get the appropriate suffix for the given M, default to an empty string if not found
+		suffix = suffix_mapping.get(args.m_size, '')
+
+		# Construct the file path
+		file_name = f"karpathy_train_{tsk}_{balance_type}{suffix}.json"
+		data_info_path = os.path.join(scenario_dir, file_name)
+
+		return data_info_path
+
 def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor):
 	print("Welcome to the rehearsal memory module")
 	if args.use_gen_data:
@@ -38,13 +65,10 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 		if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
 			print(f"Synthetic QA pairs not found so creating  for task {task}")
 			create_rehearsal_data(args, task_idx, model, processor, dest)
-		each_memory = 5000
+		each_memory = args.m_size
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		if args.not_balanced:
-			fname = f'{All_task[task_idx]}unbalanced.json'
-		else:
-			fname = f'{All_task[task_idx]}balanced.json'
-		data_info_path = (f'{dest}/karpathy_train_' + fname)
+		scenario_dir = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		data_info_path = build_data_info_path(args, scenario_dir, All_task[task_idx])
 	else:
 		print("Loading real QA pairs from previous tasks")
 		dest = '../datasets/vqa/Partition_Q_V2/'

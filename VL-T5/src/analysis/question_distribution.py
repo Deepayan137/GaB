@@ -2,11 +2,14 @@ import os
 import torch
 import numpy as np
 import json
+import pickle
 from collections import Counter, defaultdict
 from tqdm import *
 from src.analysis.question_classifier import get_embedding, QuestionTypeClassifier
 import random
 from sklearn.cluster import KMeans
+import sys
+from scipy.spatial.distance import cdist
 sys.path.insert(0, '../')
 from Question_type import *
 
@@ -19,17 +22,20 @@ def label_stats(label_counts):
 
 def get_question_dist(predictions):
 	label_counts = Counter()
-	# Update counts for this batch
+	# Increment the count for each prediction
 	for prediction in predictions:
-		label_counts.update(prediction)
+		label_counts[prediction] += 1  # Directly increment the count of each prediction
 
 	return label_stats(label_counts)
 
-def _load_classifier_ckpt(classifier, sub_task):
-	ckpt_path =f'ckpt/{sub_task}.pth'
+def _load_classifier_ckpt(classifier, sub_task, name='sgvqa'):
+	if name == 'sgvqa':
+		ckpt_path =f'ckpt/{sub_task}.pth'
+	else:
+		ckpt_path = f'ckpt_vqacl/{sub_task}.pth'
 	if os.path.exists(ckpt_path):
 		print(f"Loading existsing checkpoint @ {ckpt_path}")
-		ckpt = torch.load(f'ckpt/{sub_task}.pth', map_location=device)
+		ckpt = torch.load(f'{ckpt_path}', map_location=device)
 		classifier.load_state_dict(ckpt)
 	else:
 		print("No ckpt found")
@@ -52,11 +58,11 @@ def load_gen_data(task):
 				data_[sub_task].append(datum[question_key])
 	return data_
 
-def load_orig_data(task, split):
+def load_orig_data(task, split, size=5000):
 	np_path = os.path.join('../datasets/npy', 'function', f"fcl_mmf_{task}_{split}.npy")
 	data = np.load(np_path, allow_pickle=True)
 	random.shuffle(data)
-	data = data[:5000]
+	data = data[:size]
 	data_ = {}
 	data_[task] = []
 	for datum in data:
@@ -101,35 +107,53 @@ def sample_by_predicted_labels(train_data, predictions, desired_counts, total_ta
 				additional_samples = min(additional_samples, len(indices))
 				sampled_indices.extend(random.sample(indices, additional_samples))
 				deficit -= additional_samples
-			# if deficit > 0:
-			# 	all_surplus_indices = [idx for indices in surplus_indices.values() for idx in indices]
-			# 	if all_surplus_indices:
-			# 	    additional_samples = random.sample(all_surplus_indices, min(deficit, len(all_surplus_indices)))
-			# 	    sampled_indices.extend(additional_samples)
-			# 	    deficit -= len(additional_samples)
+			if deficit > 0:
+				all_surplus_indices = [idx for indices in surplus_indices.values() for idx in indices]
+				if all_surplus_indices:
+					additional_samples = random.sample(all_surplus_indices, min(deficit, len(all_surplus_indices)))
+					sampled_indices.extend(additional_samples)
+					deficit -= len(additional_samples)
 	sampled_data = [train_data[idx] for idx in sampled_indices]
 	return sampled_data
 
-def cluster_questions(questions, task, batch_size=32, n_clusters=10):
-		# Placeholder for all embeddings
-		all_embeddings = []
+def cluster_questions(questions, task, batch_size=32, n_clusters=10, train=False, name='sgvqa'):
+	# Placeholder for all embeddings
+	all_embeddings = []
+	if name == 'sgvqa':
+		filename = f'ckpt/kmeans_{task}.pkl'
+	else:
+		filename = f'ckpt_vqacl/kmeans_{task}.pkl'
+	# Generate embeddings for all questions
+	for i in trange(0, len(questions[task]), batch_size):
+		batch_questions = questions[task][i:i + batch_size]
+		embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
+		all_embeddings.extend(embeddings)
 
-		# Generate embeddings for all questions
-		for i in trange(0, len(questions[task]), batch_size):
-			batch_questions = questions[task][i:i + batch_size]
-			embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
-			all_embeddings.extend(embeddings)
+	# Stack all embeddings into a single tensor
+	embeddings_tensor = torch.stack(all_embeddings)
+	embeddings_tensor = embeddings_tensor.cpu().numpy()  # Convert to numpy array for KMeans
 
-		# Stack all embeddings into a single tensor
-		embeddings_tensor = torch.stack(all_embeddings)
-		embeddings_tensor = embeddings_tensor.cpu().numpy()  # Convert to numpy array for KMeans
+	# Perform k-means clustering
+	if train:
+		if not os.path.exists(filename):
+			print("Clustering and saving prototypes")
+			kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embeddings_tensor)
+			# Save the cluster centers (prototypes)
+			prototypes = kmeans.cluster_centers_
+			with open(filename, 'wb') as file:
+				pickle.dump(prototypes, file)
 
-		# Perform k-means clustering
-		kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embeddings_tensor)
-
-		# Get predicted labels for all questions
-		predicted_labels = kmeans.labels_
-		return predicted_labels
+	if os.path.exists(filename):
+		print("prototypes found loading prototypes")
+		with open(filename, 'rb') as file:
+			prototypes = pickle.load(file)
+	else:
+		raise Exception(f"No Kmeans prototypes found @ {filename}")
+	print("Estimating distances with ptototypes")
+	# Get predicted labels for all embeddings using the loaded or newly computed prototypes
+	distances = cdist(embeddings_tensor, prototypes, 'euclidean')
+	predicted_labels = np.argmin(distances, axis=1)
+	return predicted_labels
 
 def classify_questions(model, questions, task, batch_size=32):
 	model.eval()  # Ensure the model is in evaluation mode
@@ -153,44 +177,45 @@ def classify_questions(model, questions, task, batch_size=32):
 
 
 if __name__ == "__main__":
-    strategy = 'classify'
-    task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4))
-    All_task = Sg_task['function']['oarlks']
-    task = All_task[task_idx]  # Simplified to only run for the first task
-    created = load_gen_data(task)
-    input_dim = 768
-    hidden_dim = 256
-    summary_dict = defaultdict(dict)
-    # Loop over all tasks, but limit to the first for simplification
-    for i, sub_task in enumerate(All_task[:task_idx]):
-        output_dim = len(qtype_dict[sub_task])
-        train_data = load_orig_data(sub_task, 'train')
+	strategy = 'cluster'
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
+	All_task = Sg_task['function']['oarlks']
+	task = All_task[task_idx]  # Simplified to only run for the first task
+	created = load_gen_data(task)
+	input_dim = 768
+	hidden_dim = 256
+	summary_dict = defaultdict(dict)
+	# Loop over all tasks, but limit to the first for simplification
+	for i, sub_task in enumerate(All_task[:task_idx]):
+		output_dim = len(qtype_dict[sub_task])
+		train_data = load_orig_data(sub_task, 'train', size=20000)
+		test_data = load_orig_data(sub_task, 'train', size=5000)
+		# Initialize classifier if the strategy is to classify
+		if strategy == 'classify':
+			classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+			classifier = _load_classifier_ckpt(classifier, sub_task)
+			predictions_created = classify_questions(classifier, created, sub_task)
+			predictions_train = classify_questions(classifier, train_data, sub_task)
+		elif strategy == 'cluster':
+			if not os.path.exists(f'ckpt/kmeans_{task}.pkl'):
+				predictions_train = cluster_questions(train_data, sub_task, train=True, name='sgvqa')
+			predictions_test = cluster_questions(test_data, sub_task, train=False, name='sgvqa')
+			predictions_created = cluster_questions(created, sub_task, name='sgvqa')
+		label_counts_created = get_question_dist(predictions_created)
+		label_counts_train = get_question_dist(predictions_test)
 
-        # Initialize classifier if the strategy is to classify
-        if strategy == 'classify':
-            classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
-            classifier = _load_classifier_ckpt(classifier, sub_task)
-            predictions_created = classify_questions(classifier, created, sub_task)
-            predictions_train = classify_questions(classifier, train_data, sub_task)
-        elif strategy == 'cluster':
-            predictions_created = cluster_questions(created, sub_users)
-            predictions_train = cluster_questions(train_data, sub_task)
+		# Store results in a more readable format
+		summary_dict[sub_task] = {
+			'balanced': {str(k): v for k, v in label_counts_train.items()},
+			'unbalanced': {str(k): v for k, v in label_counts_created.items()}
+		}
 
-        label_counts_created = get_question_dist(predictions_created)
-        label_counts_train = get_question_dist(predictions_train)
+		print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
+		print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_train}')
 
-        # Store results in a more readable format
-        summary_dict[sub_task] = {
-            'balanced': {str(k): v for k, v in label_counts_train.items()},
-            'unbalanced': {str(k): v for k, v in label_counts_created.items()}
-        }
-
-        print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
-        print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_train}')
-
-    # Save results based on strategy
-    file_name = "question_dist_via_clustering.json" if strategy == 'cluster' else "question_dist.json"
-    with open(os.path.join("metrics", f"sgvqa_{task}_{file_name}"), 'w') as f:
-        json.dump(summary_dict, f, indent=4)
+	# Save results based on strategy
+	file_name = "question_dist_via_clustering.json" if strategy == 'cluster' else "question_dist.json"
+	with open(os.path.join("metrics", f"sgvqa_{task}_{file_name}"), 'w') as f:
+		json.dump(summary_dict, f, indent=4)
 
 

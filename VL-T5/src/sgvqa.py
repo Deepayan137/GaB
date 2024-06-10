@@ -119,17 +119,18 @@ class Trainer(TrainerBase):
 	def build_data_info_path(self, scenario_dir, tsk):
 		# Define the suffix based on M
 		suffix_mapping = {
-		    5000: '',
+		    5000: '_5k',
 		    1000: '_1k',
-		    2500: '_2.5k',
-		    10000: '_10k'
+		    2500: '_2k',
+		    10000: '_10k',
+		    20000: '_20k'
 		}
 
 		# Determine the balance type
-		if self.args.balance_strategy == "balance_classifier":
+		if self.args.balance_strategy == "classifier":
 			balance_type = "balanced"
-		elif self.args.balance_strategy == "balance_cluster":
-			balance_type = "balanced_cluster"
+		elif self.args.balance_strategy == "cluster":
+			balance_type = "cluster_balanced"
 		else:
 			balance_type = "unbalanced"
 
@@ -137,7 +138,7 @@ class Trainer(TrainerBase):
 		suffix = suffix_mapping.get(self.M, '')
 
 		# Construct the file path
-		file_name = f"fcl_mmf_{tsk}_train_{balance_type}_{suffix}.json"
+		file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
 		data_info_path = os.path.join(scenario_dir, file_name)
 
 		return data_info_path
@@ -201,14 +202,17 @@ class Trainer(TrainerBase):
 							All_examplar.extend(self.Examplar_set[task_set][:each_memory])
 					else:
 						# Construct the task-specific file path
-						print("Welcome to the rehearsal module")
+						# if self.args.replay_strategy == 'static':
+						print("Welcome to the static rehearsal module")
 						tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
-						scenario_dir = f'../datasets/npy_{self.args.method}/{args.scenario}'
+						scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
 						data_info_path = self.build_data_info_path(scenario_dir, tsk)
 						print(f"Load synthetic replay data from {data_info_path}")
 						# Load the exemplar data from the file
 						with open(data_info_path, 'r') as file:
 							All_examplar = json.load(file)
+						# elif self.args.replay_type == "dynamic":
+						# 	pass
 					print(f"Size of Repay data is {len(All_examplar)}")
 				else:
 					All_examplar = []
@@ -414,6 +418,7 @@ class Trainer(TrainerBase):
 			if os.path.exists(last_path + '.pth') and not self.args.now_train:
 				self.load(last_path)
 				task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:1])
+				# self.test(task)
 				self.test(task)
 			else:
 				print("No model found")
@@ -554,7 +559,7 @@ def main_worker(args):
 
 	else:
 		if args.checkpoint!='None':
-			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0))
+			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9))
 			task = Sg_task[args.scenario][args.sequence][task_idx]
 			args.checkpoint = f'{args.output}/{task}_BEST'
 			print(args.checkpoint)
@@ -583,7 +588,7 @@ if __name__ == "__main__":
 	if not os.path.exists(args.output):
 		os.makedirs(args.output, exist_ok=True)
 	args_output_path = os.path.join(args.output, 'object_BEST.pth')
-	source_path = 'snap/naiveblip_sgvqa_mem_real/object_BEST.pth'
+	source_path = 'snap/naiveblip_sgvqa_no_ents/object_BEST.pth'
 	if not os.path.exists(args_output_path):
 		try:
 			shutil.copyfile(source_path, args_output_path)

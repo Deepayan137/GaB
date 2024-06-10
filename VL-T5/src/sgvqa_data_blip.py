@@ -551,12 +551,11 @@ if __name__ == "__main__":
 	split = f'val'
 	scenario='function'
 	task='attribute'
-	args.use_gen_data = False
-	args.create_gen_data = False
-	args.use_qtype = True
-	data_info_path = (f'../datasets/npy_self/{scenario}/' + f'fcl_mmf_attribute_train.json')
-	# with open(data_info_path, 'r') as file:
-	# 	All_examplar = json.load(file)
+	args.use_gen_data = True
+	# args.use_qtype = True
+	data_info_path = (f'../datasets/npy_no_ents/{scenario}/' + f'fcl_mmf_attribute_train_balanced.json')
+	with open(data_info_path, 'r') as file:
+		All_examplar = json.load(file)
 	# filtered_exemplars = []
 	# for datum in All_examplar:
 	# 	new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
@@ -593,11 +592,13 @@ if __name__ == "__main__":
 
 	# random.shuffle(data_info_dicts)  # shuffle
 	# All_examplar = data_info_dicts[:5000]
-	loader, _= get_loader(args, scenario='function', task='attribute',split='train', batch_size=32, workers=0)
+	# loader, _= get_loader(args, scenario='function', task='attribute',split='train', batch_size=32, workers=0)
+	loader = get_loader_memory(args, All_examplar, scenario='function', split='train', batch_size=32, workers=0)
 	# quesid2ans = {}
 	# gtAnswers = {}
 	for batch in loader:
 		data=batch['target_ids']
+		import pdb;pdb.set_trace()
 	#   answers = batch['answers']
 	#   qids = batch['question_ids']
 	#   all_answers = batch['all_answers']

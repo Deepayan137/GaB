@@ -10,8 +10,7 @@ from tqdm import *
 from transformers import AutoProcessor, Blip2Config
 from src.vqa_model_blip import NaiveBLIP2
 from src.param import parse_args
-from src.analysis.question_distribution import classify_questions, _load_classifier_ckpt
-from src.analysis.question_distribution_clustering import cluster_questions
+from src.analysis.question_distribution import classify_questions, cluster_questions, _load_classifier_ckpt
 from src.analysis.question_classifier import QuestionTypeClassifier
 import sys
 sys.path.insert(0, '../')
@@ -64,16 +63,17 @@ def main():
 	# Configuration and setup
 	classify_strategy = "cluster"
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4))
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
 	method = 'no_ents'
 	task = Sg_task['function']['oarlks'][task_idx]
 	fname = f"fcl_mmf_{task}_train.npy"
 	npy_path = os.path.join('../datasets/npy/function', fname)
 	data = np.load(npy_path, allow_pickle=True)
-	data = data[:50]  # Taking a slice for testing
+	random.shuffle(data)
+	data = data[:10000]  # Taking a slice for testing
 	dest_dir = f'../datasets/npy_{method}/function'
 	os.makedirs(dest_dir, exist_ok=True)
-	dest_file = os.path.join(dest_dir, fname.replace('.npy', '_full.json'))
+	dest_file = os.path.join(dest_dir, fname.replace('.npy', f'_{classify_strategy}_full.json'))
 	save_path = f'snap/naiveblip_sgvqa_{method}/'
 	
 	gen_ques = GenQues(save_path)
@@ -94,7 +94,7 @@ def main():
 		gen_ques._load_model(qg_task)
 		print(f'Processing {len(data)} samples for task: {qg_task}')
 		sub_task_questions[qg_task] = []
-		for entry in tqdm(data):
+		for entry in (data):
 			
 			# Create a deep copy of entry to ensure unique modification per task
 			task_entry = copy.deepcopy(entry)
@@ -104,8 +104,8 @@ def main():
 			
 			if pairs:
 				questions, answers = zip(*pairs)
-				task_entry[f'Q_{qg_task}'] = questions
-				task_entry[f'A_{qg_task}'] = answers
+				task_entry[f'Q'] = questions[0]
+				task_entry[f'A'] = answers[0]
 				processed_data[qg_task].append(task_entry)
 				sub_task_questions[qg_task].append(questions[0])
 			else:
@@ -115,7 +115,7 @@ def main():
 			predictions = classify_questions(classifier, sub_task_questions, qg_task)
 		elif classify_strategy == "cluster":
 			print("Clustering questions")
-			predictions = cluster_questions(sub_task_questions, qg_task)
+			predictions = cluster_questions(sub_task_questions, qg_task, train=False)
 		for index, datum_dict in enumerate(processed_data[qg_task]):
 			datum_dict[f'{classify_strategy}_prediction'] = str(predictions[index])
 			final_data[qg_task].append(datum_dict)
