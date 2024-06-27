@@ -36,6 +36,8 @@ def cycle(iterable):
 		for i in iterable:
 			yield i
 
+
+
 class Trainer(TrainerBase):
 	def __init__(self, args, sg_Ours, train_loader=None, val_loader=None, test_loader=None, train=True):
 		self.result_matrix = {}
@@ -89,14 +91,10 @@ class Trainer(TrainerBase):
 			self.regularizer = self.regularizer.to(args.gpu)
 		if 'blip' in self.args.backbone:
 			self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-			if self.args.use_cap_loss and self.args.two_optim:
+			if self.args.use_cap_loss:
 				print("We will use caption loss and two optimizers")
 				self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
-					weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
-			elif self.args.use_cap_loss and not self.args.two_optim:
-				print("We will use caption loss and only one optimizer")
-			else:
-				print("We will use not use any captioning loss and will stick to original framework")
+						weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
 			self.lr_scheduler = None
 		if self.verbose:
 			print(f'It took {time() - start:.1f}s')
@@ -117,6 +115,33 @@ class Trainer(TrainerBase):
 				self.task_iftrain[task] = 1
 		self.load(checkpoint_model)
 		print(f'Success to load the checkpoint from the task {checkpoint_name}')
+
+	def build_data_info_path(self, scenario_dir, tsk):
+		# Define the suffix based on M
+		suffix_mapping = {
+		    5000: '_5k',
+		    1000: '_1k',
+		    2500: '_2k',
+		    10000: '_10k',
+		    20000: '_20k'
+		}
+
+		# Determine the balance type
+		if self.args.balance_strategy == "classifier":
+			balance_type = "balanced"
+		elif self.args.balance_strategy == "cluster":
+			balance_type = "cluster_balanced"
+		else:
+			balance_type = "unbalanced"
+
+		# Get the appropriate suffix for the given M, default to an empty string if not found
+		suffix = suffix_mapping.get(self.M, '')
+
+		# Construct the file path
+		file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
+		data_info_path = os.path.join(scenario_dir, file_name)
+
+		return data_info_path
 
 	def train(self, load=False):
 		if 'blip' in args.backbone:
@@ -155,14 +180,14 @@ class Trainer(TrainerBase):
 			if args.memory:
 				if task_idx > 0:
 					prev_task = self.task_list[task_idx - 1]
-					# ckpt_path = os.path.join(self.args.output, f'{prev_task}_BEST.pth')
-					# if os.path.exists(ckpt_path) and ckpt_path != self.args.checkpoint:
-					# 	self.load(ckpt_path) # Load the best previous model
+					ckpt_path = os.path.join(self.args.output, f'{prev_task}_BEST.pth')
+					if os.path.exists(ckpt_path) and ckpt_path != self.args.checkpoint:
+						self.load(ckpt_path) # Load the best previous model
 					each_memory = int(self.M / task_idx)
 					if not args.use_gen_data:
 						if args.use_biased_data:
 							print("Loading use_biased_data... Hahahahha")
-							with open(f'examplars/{task}.pkl', 'rb') as f:
+							with open(f'../datasets/npy_biased/{task}.pkl', 'rb') as f:
 								self.Examplar_set = pickle.load(f)
 						else:
 							for t in range(task_idx):
@@ -177,52 +202,18 @@ class Trainer(TrainerBase):
 							All_examplar.extend(self.Examplar_set[task_set][:each_memory])
 					else:
 						# Construct the task-specific file path
-						print("Welcome to the rehearsal module")
-						tsk = Sg_task['function']['oarlks'][task_idx]
-						scenario_dir = f'../datasets/npy_cap/{args.scenario}'
-						data_info_path = os.path.join(scenario_dir,f'fcl_mmf_{tsk}_train.json')
+						# if self.args.replay_strategy == 'static':
+						print("Welcome to the static rehearsal module")
+						tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
+						scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
+						data_info_path = self.build_data_info_path(scenario_dir, tsk)
+						print(f"Load synthetic replay data from {data_info_path}")
 						# Load the exemplar data from the file
 						with open(data_info_path, 'r') as file:
-							data = json.load(file)
-						if self.args.create_gen_data:
-							dest = f'../datasets/npy_self/{args.scenario}'
-							if os.path.exists(os.path.join(dest, f'fcl_mmf_{tsk}_train.json')):
-								print("Loading self generated QA pairs")
-								with open(os.path.join(dest, f'fcl_mmf_{tsk}_train.json'), 'r') as f:
-									All_examplar = json.load(f)
-								if self.args.self_train:
-									print("We will use model's prediction as pseudo labels")
-								else:
-									print("We will use adapters QA")
-							else:
-								print("Creating own QA pairs")
-								All_examplar = create_rehearsal_data(self.args, task_idx, self.model, self.processor, data, dest)
-						else:
-							print("Loading Llama generated QA pairs")
-							# Filter and reformat the exemplar data
-							scenario_dir = f'../datasets/npy_llama/{args.scenario}'
-							data_info_path = os.path.join(scenario_dir,f'{tsk}_gen_qa_pairs.json')
-							# Load the exemplar data from the file
-							with open(data_info_path, 'r') as file:
-								All_examplar = json.load(file)
-							filtered_exemplars = []
-							for datum in All_examplar:
-								new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
-								# Extract questions and answers, filter out 'not specified' answers
-								questions = [datum[key] for key in datum if key.startswith('Q_')]
-								answers = [datum[key] for key in datum if key.startswith('A_')]
-								qa_pairs = [(q, a) for q, a in zip(questions[0], answers[0]) if (a != 'not specified') or (a != "not sure")]
-								
-							# Only add non-empty QA pairs back to the new datum
-							if qa_pairs:
-								questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
-								new_datum['Q'] = list(questions)
-								new_datum['A'] = list(answers)
-								filtered_exemplars.append(new_datum)
-
-							# Replace the original list with the filtered list
-							All_examplar = filtered_exemplars
-					print("# The size of the cate Memory:", len(All_examplar))
+							All_examplar = json.load(file)
+						# elif self.args.replay_type == "dynamic":
+						# 	pass
+					print(f"Size of Repay data is {len(All_examplar)}")
 				else:
 					All_examplar = []
 					each_memory = 0
@@ -382,17 +373,16 @@ class Trainer(TrainerBase):
 		if 'loss_cap' in results:
 			if self.args.use_cap_loss:
 				loss_cap = results['loss_cap']
-				if not self.args.two_optim:
-					loss = loss + loss_cap
-				else:
-					self.optim_question.zero_grad(set_to_none=True)
-					loss_cap.backward(retain_graph=True)
-					self.optim_question.step()
-		if self.regularizer is not None:
+				self.optim_question.zero_grad(set_to_none=True)
+				loss_cap.backward(retain_graph=True)
+				self.optim_question.step()
+	    
+        if self.regularizer is not None:
 			cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
 			loss += cl_reg
 			results['reg_loss'] = cl_reg
-		loss.backward()
+		
+        loss.backward()
 		loss = loss.detach()
 		if self.args.clip_grad_norm > 0:
 			 torch.nn.utils.clip_grad_norm_(
@@ -440,6 +430,7 @@ class Trainer(TrainerBase):
 			if os.path.exists(last_path + '.pth') and not self.args.now_train:
 				self.load(last_path)
 				task = '_'.join(os.path.basename(self.args.checkpoint).split('_')[:1])
+				# self.test(task)
 				self.test(task)
 			else:
 				print("No model found")
@@ -551,7 +542,7 @@ class Trainer(TrainerBase):
 
 def main_worker(args):
 	args.gpu = 0
-	sg_Ours = Sg_task["function"]["oarlks"]
+	sg_Ours = Sg_task[args.scenario][args.sequence]
 	if args.train_multi:
 		from src.multi.trainer_multi_sgvqa import SGTrainerMulti
 		trainer = SGTrainerMulti(args, sg_Ours, train=True)
@@ -580,8 +571,8 @@ def main_worker(args):
 
 	else:
 		if args.checkpoint!='None':
-			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 0))
-			task = Sg_task['function']['oarlks'][task_idx]
+			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9))
+			task = Sg_task[args.scenario][args.sequence][task_idx]
 			args.checkpoint = f'{args.output}/{task}_BEST'
 			print(args.checkpoint)
 			trainer.Test(load=True)
@@ -608,6 +599,16 @@ if __name__ == "__main__":
 	args_dict = vars(args)
 	if not os.path.exists(args.output):
 		os.makedirs(args.output, exist_ok=True)
+	args_output_path = os.path.join(args.output, 'object_BEST.pth')
+	source_path = 'snap/naiveblip_sgvqa_no_ents/object_BEST.pth'
+	if not os.path.exists(args_output_path):
+		try:
+			shutil.copyfile(source_path, args_output_path)
+			print(f"Successfully copied {source_path} to {args_output_path}")
+		except Exception as e:
+			print(f"Failed to copy file: {e}")
+	else:
+		print(f"File already exists: {args_output_path}")
 	with open(f'{args.output}/config.json', 'w') as f:
 		json.dump(args_dict, f, indent=4)
 	main_worker(args)

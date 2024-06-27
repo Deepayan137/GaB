@@ -29,27 +29,51 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 MODEL_DIR="./llama-2-7b-chat-hf"
 All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 
+def build_data_info_path(args, scenario_dir, tsk):
+		# Define the suffix based on M
+		suffix_mapping = {
+		    5000: '_5k',
+		    1000: '_1k',
+		    2500: '_2k',
+		    10000: '_10k',
+		    20000: '_20k',
+		}
+
+		# Determine the balance type
+		if args.balance_strategy == "classifier":
+			balance_type = "balanced"
+		elif args.balance_strategy == "cluster":
+			balance_type = "cluster_balanced"
+		else:
+			balance_type = "unbalanced"
+
+		# Get the appropriate suffix for the given M, default to an empty string if not found
+		suffix = suffix_mapping.get(args.m_size, '')
+
+		# Construct the file path
+		file_name = f"karpathy_train_{tsk}_{balance_type}{suffix}.json"
+		data_info_path = os.path.join(scenario_dir, file_name)
+
+		return data_info_path
+
 def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor):
 	print("Welcome to the rehearsal memory module")
 	if args.use_gen_data:
 		print("We will use Synthetic QA pairs")
-		if args.create_gen_data:
-			task = All_task[task_idx]
-			dest = '../datasets/vqa/Partition_Q_V2_subset_ST/'
-			if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
-				print(f"Synthetic QA pairs not found so creating  for task {task}")
-				create_rehearsal_data(args, task_idx, model, processor, dest)
-				print("Data creation completed, will load blip generated QA pairs")
-		else:
-			print("Loading Llama generated QA pairs")
-			dest = '../datasets/vqa/Partition_Q_V2_llamaQA'
-		each_memory = 5000
+		task = All_task[task_idx]
+		dest = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
+			print(f"Synthetic QA pairs not found so creating  for task {task}")
+			create_rehearsal_data(args, task_idx, model, processor, dest)
+		each_memory = args.m_size
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		data_info_path = (f'{dest}/karpathy_train_' + f'{All_task[task_idx]}.json')
+		scenario_dir = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		data_info_path = build_data_info_path(args, scenario_dir, All_task[task_idx])
 	else:
-		print("Loading real QA pairs from previos tasks")
+		print("Loading real QA pairs from previous tasks")
 		dest = '../datasets/vqa/Partition_Q_V2/'
 		data_info_path = (f'{dest}/karpathy_train_' + f'{All_task[task_idx - 1]}.json')
+	print(f"Loading data from {data_info_path}")
 	with open(data_info_path) as f:
 		data_info_dicts = json.load(f)
 	random.shuffle(data_info_dicts)
@@ -85,7 +109,7 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 				All_examplar += Examplar_set[E_set]
 	else:
 		All_examplar = data_info_dicts[:each_memory]
-	print("# The size of the cate Memory:", len(All_examplar))			
+	print("# The size of the cate Memory:", len(All_examplar))
 	return All_examplar, Examplar_set
 
 def post_process_answer(answer):

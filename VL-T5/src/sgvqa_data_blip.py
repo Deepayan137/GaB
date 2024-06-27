@@ -14,18 +14,21 @@ import re
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 from tqdm import *
 
+sys.path.insert(0, '../')
+from Question_type import qtype_dict
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 class SGVQA(Dataset):
 	def __init__(self, task='object', split='train', scenario='scene', verbose=True, args=None):
 		super().__init__()
-		filename = f'fcl_mmf_{task}_{split}.json'
-		data_path = os.path.join('../datasets/npy_cap_all', scenario, filename)
+		filename = f'fcl_mmf_{task}_{split}.npy'
+		data_path = os.path.join('../datasets/npy', scenario, filename)
 		print(data_path)
-		with open(data_path, 'r') as f:
-			data = json.load(f)
-		self.data = data
-		# self.data = np.load(data_path, allow_pickle=True)
+		# with open(data_path, 'r') as f:
+		# 	data = json.load(f)
+		self.task = task
+		self.data = np.load(data_path, allow_pickle=True)
 		# self.data = self.data[:50]
 
 		self.args=args
@@ -33,8 +36,12 @@ class SGVQA(Dataset):
 		self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 		self.processor.tokenizer.padding_side = 'right'
 		self.processor.tokenizer.truncation_side = 'right'
-		if self.args.reverse_caption:
-			print("We will use reverse captioning strategy")
+		if self.args.method == 'ents':
+			print("We will use answers as prompts")
+		elif self.args.method == 'no_ents':
+			print("We will not use any prompt")
+		elif self.args.method == 'qtype':
+			print("we will use qtypes as prompts")
 		if verbose:
 			print("# all sentences:", len(self.data), 'with Examplers')
 		self.split = split
@@ -79,11 +86,17 @@ class SGVQA(Dataset):
 			else:
 				answer = datum['answer']
 			out_dict['answer'] = answer
-		if self.args.reverse_caption:
-			caption = datum['caption'].split('.')[0] + '.'
-			caption = f"Caption:{caption} Answer:{answer}. Question:{datum['question']}"
+		if self.args.method == 'ents':
+			caption = f"Answer:{answer}. Question:{datum['question']}"
+		elif self.args.method == 'qtype':
+			if datum['raw_question_type']:
+				qtype = qtype_dict[self.task][f"{datum['raw_question_type']}"]
+			else:
+				qtype = 0
+			caption = f"Question Type:{qtype} Question:{datum['question']} Answer:{answer}"
 		else:
 			caption = f"{datum['question']} {answer}"
+		
 		cap_ids = self.processor.tokenizer.encode(caption, max_length=70, truncation=True)
 		out_dict['cap_ids'] = torch.LongTensor(cap_ids)
 		out_dict['cap_length'] = len(cap_ids)
@@ -197,27 +210,9 @@ class SGVQA_memory(Dataset):
 			image = Image.open(f).convert("RGB")
 		else:
 			raise "image path does not exists"
-		if self.args.use_gen_data and not self.args.create_gen_data:
-			questions = datum["Q"]
-			answers = datum["A"]
-			num_q = len(questions)
-			sample_idx = random.sample(range(num_q), k=1)[0]
-			sent = questions[sample_idx]
-		elif self.args.use_gen_data and self.args.create_gen_data:
-			potential_answer = None
-			for key, value in datum.items():
-				if key.startswith("Q"):
-					sent = datum[key]
-				if (self.args.self_train and key.startswith("A")):
-					potential_answer = value
-				elif (not self.args.self_train and key.startswith("A")):
-					potential_answer = value
-			if isinstance(potential_answer, list) and potential_answer:
-				answer = potential_answer[0]
-			elif isinstance(potential_answer, str) and potential_answer:
-				answer = potential_answer
-			else:
-				answer = "not sure"
+		if self.args.use_gen_data:
+			sent = datum["Q"]
+			answer = datum ["A"]
 		else:
 			if 'question' in datum:
 				sent = datum['question']
@@ -233,14 +228,7 @@ class SGVQA_memory(Dataset):
 		out_dict['sent'] = sent
 		out_dict['input_ids'] = inputs["input_ids"]
 		out_dict['input_length'] = len(inputs["input_ids"][0])
-		if self.args.use_gen_data and not self.args.create_gen_data:
-			ans = answers[sample_idx]
-			ans_words = ans.split(' ')
-			if len(ans_words) >= 3:
-				ans_words = ans_words[:3]
-				ans = " ".join(ans_words) 
-			out_dict['answer'] = ans
-		elif self.args.use_gen_data and self.args.create_gen_data:
+		if self.args.use_gen_data:
 			out_dict['answer'] = answer
 		else:
 			out_dict['answer'] = datum['answer']
@@ -564,11 +552,11 @@ if __name__ == "__main__":
 	scenario='function'
 	task='attribute'
 	args.use_gen_data = True
-	args.create_gen_data = True
-	data_info_path = (f'../datasets/npy_self/{scenario}/' + f'fcl_mmf_attribute_train.json')
+	# args.use_qtype = True
+	data_info_path = (f'../datasets/npy_no_ents/{scenario}/' + f'fcl_mmf_attribute_train_balanced.json')
 	with open(data_info_path, 'r') as file:
 		All_examplar = json.load(file)
-	filtered_exemplars = []
+	# filtered_exemplars = []
 	# for datum in All_examplar:
 	# 	new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
 	# 	# Extract questions and answers, filter out 'not specified' answers
@@ -604,11 +592,13 @@ if __name__ == "__main__":
 
 	# random.shuffle(data_info_dicts)  # shuffle
 	# All_examplar = data_info_dicts[:5000]
-	loader= get_loader_memory(args, All_examplar, batch_size=32, workers=0)
+	# loader, _= get_loader(args, scenario='function', task='attribute',split='train', batch_size=32, workers=0)
+	loader = get_loader_memory(args, All_examplar, scenario='function', split='train', batch_size=32, workers=0)
 	# quesid2ans = {}
 	# gtAnswers = {}
 	for batch in loader:
-		import pdb;pdb.set_trace()  
+		data=batch['target_ids']
+		import pdb;pdb.set_trace()
 	#   answers = batch['answers']
 	#   qids = batch['question_ids']
 	#   all_answers = batch['all_answers']

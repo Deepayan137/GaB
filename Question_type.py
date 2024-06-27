@@ -19,8 +19,185 @@ Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcat
 Sg_task = {
     "function":{
         "oarlks":["object", "attribute", "relation", "logical", "knowledge", "scenetext"],
+        "rolak":["relation", "object", "logical", "attribute", "knowledge"],
+        "rklao":["relation", "knowledge", "logical", "attribute", "object"]
+    },
+    "scene":{
+        "abcdef":["a#ShopAndDining", "b#Workplace", "c#HomeOrHotel", "d#Transportation", "e#SportAndLeisure", "f#Outdoors"]
     }
 }
+
+qtype_dict = {
+    "object":
+            {"{'detailed': 'place', 'semantic': 'global', 'structural': 'query'}":0,
+            "{'detailed': 'category', 'semantic': 'cat', 'structural': 'query'}":1,
+            "{'detailed': 'objThisChoose', 'semantic': 'cat', 'structural': 'choose'}":2,
+            "{'detailed': 'categoryThisChoose', 'semantic': 'cat', 'structural': 'choose'}":3,
+            "{'detailed': 'categoryThis', 'semantic': 'cat', 'structural': 'query'}":4,
+            "{'detailed': 'placeChoose', 'semantic': 'global', 'structural': 'choose'}":5,
+    },
+    "attribute":
+            {"{'detailed': 'chooseAttr', 'semantic': 'attr', 'structural': 'choose'}":0,
+            "{'detailed': 'categoryThat', 'semantic': 'cat', 'structural': 'query'}":1,
+            "{'detailed': 'categoryAttr', 'semantic': 'cat', 'structural': 'query'}":2,
+            "{'detailed': 'categoryThatChoose', 'semantic': 'cat', 'structural': 'choose'}":3,
+            "{'detailed': 'directWhich', 'semantic': 'attr', 'structural': 'query'}":4,
+            "{'detailed': 'activity', 'semantic': 'attr', 'structural': 'query'}":5,
+            "{'detailed': 'activityWho', 'semantic': 'cat', 'structural': 'query'}":6,
+            "{'detailed': 'material', 'semantic': 'attr', 'structural': 'query'}":7,
+            "{'detailed': 'directOf', 'semantic': 'attr', 'structural': 'query'}":8,
+            "{'detailed': 'weather', 'semantic': 'global', 'structural': 'query'}":9,
+            "{'detailed': 'how', 'semantic': 'attr', 'structural': 'query'}":10,
+            "{'detailed': 'locationChoose', 'semantic': 'global', 'structural': 'choose'}":11,
+            "{'detailed': 'materialChoose', 'semantic': 'attr', 'structural': 'choose'}":12,
+            "{'detailed': 'typeChoose', 'semantic': 'attr', 'structural': 'choose'}":13,
+            "{'detailed': 'activityChoose', 'semantic': 'attr', 'structural': 'choose'}":14,
+            "{'detailed': 'company', 'semantic': 'attr', 'structural': 'query'}":15,
+            "{'detailed': 'weatherChoose', 'semantic': 'global', 'structural': 'choose'}":16,
+            "{'detailed': 'state', 'semantic': 'attr', 'structural': 'query'}":17,
+            "{'detailed': 'companyChoose', 'semantic': 'attr', 'structural': 'choose'}":18,
+            "{'detailed': 'stateChoose', 'semantic': 'attr', 'structural': 'choose'}":19
+    },
+    "relation":{
+            "{'detailed': 'relO', 'semantic': 'rel', 'structural': 'query'}":0,
+            "{'detailed': 'relS', 'semantic': 'rel', 'structural': 'query'}":1,
+            "{'detailed': 'directOf', 'semantic': 'attr', 'structural': 'query'}":2,
+            "{'detailed': 'how', 'semantic': 'attr', 'structural': 'query'}":3,
+            "{'detailed': 'chooseAttr', 'semantic': 'attr', 'structural': 'choose'}":4,
+            "{'detailed': 'categoryRelS', 'semantic': 'rel', 'structural': 'query'}":5,
+            "{'detailed': 'directWhich', 'semantic': 'attr', 'structural': 'query'}":6,
+            "{'detailed': 'relVerify', 'semantic': 'rel', 'structural': 'verify'}":7,
+            "{'detailed': 'activity', 'semantic': 'attr', 'structural': 'query'}":8,
+            "{'detailed': 'materialChoose', 'semantic': 'attr', 'structural': 'choose'}":9,
+            "{'detailed': 'material', 'semantic': 'attr', 'structural': 'query'}":10,
+            "{'detailed': 'categoryRelO', 'semantic': 'rel', 'structural': 'query'}":11,
+            "{'detailed': 'relVerifyCr', 'semantic': 'rel', 'structural': 'verify'}":12,
+            "{'detailed': 'relChooser', 'semantic': 'rel', 'structural': 'choose'}":13,
+            "{'detailed': 'relVerifyCo', 'semantic': 'rel', 'structural': 'verify'}":14,
+            "{'detailed': 'activityChoose', 'semantic': 'attr', 'structural': 'choose'}":15,
+            "{'detailed': 'sameRelate', 'semantic': 'rel', 'structural': 'query'}":16,
+            "{'detailed': 'categoryRelOChoose', 'semantic': 'rel', 'structural': 'choose'}":17,
+            "{'detailed': 'dir', 'semantic': 'rel', 'structural': 'query'}":18,
+            "{'detailed': 'sameMaterialRelate', 'semantic': 'rel', 'structural': 'query'}":19,
+            "{'detailed': 'positionChoose', 'semantic': 'attr', 'structural': 'choose'}":20,
+            "{'detailed': 'existRelS', 'semantic': 'rel', 'structural': 'verify'}":21,
+            "{'detailed': 'company', 'semantic': 'attr', 'structural': 'query'}":22
+    },
+    "logical":{
+            "{'detailed': 'twoDifferentC', 'semantic': 'attr', 'structural': 'compare'}":0,
+            "{'detailed': 'twoSame', 'semantic': 'attr', 'structural': 'compare'}":1,
+            "{'detailed': 'twoCommon', 'semantic': 'attr', 'structural': 'compare'}":2,
+            "{'detailed': 'twoDifferent', 'semantic': 'attr', 'structural': 'compare'}":3,
+            "{'detailed': 'diffAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":4,
+            "{'detailed': 'sameAnimals', 'semantic': 'attr', 'structural': 'compare'}":5,
+            "{'detailed': 'twoSameC', 'semantic': 'attr', 'structural': 'compare'}":6,
+            "{'detailed': 'sameAnimalsC', 'semantic': 'attr', 'structural': 'compare'}":7,
+            "{'detailed': 'twoSameMaterialC', 'semantic': 'attr', 'structural': 'compare'}":8,
+            "{'detailed': 'twoSameMaterial', 'semantic': 'attr', 'structural': 'compare'}":9,
+            "{'detailed': 'comparativeChoose', 'semantic': 'attr', 'structural': 'compare'}":10,
+            "{'detailed': 'sameGenderC', 'semantic': 'attr', 'structural': 'compare'}":11,
+            "{'detailed': 'sameGender', 'semantic': 'attr', 'structural': 'compare'}":12,
+            "{'detailed': 'diffAnimals', 'semantic': 'attr', 'structural': 'compare'}":13,
+            "{'detailed': 'diffGender', 'semantic': 'attr', 'structural': 'compare'}":14
+    },
+    "knowledge":{},
+}
+
+
+cat_dict_vqacl = {
+    "q_recognition": {
+        "what":0,
+        "what is the":1,
+        "what is":2,
+        "what are the":3,  # Consolidated duplicate here
+        "which":4,
+        "what is on the":5,
+        "what is in the":6,
+        "what is this":7,
+        "what does the":8,
+        "who is":9,
+        "what is the name":10,
+        "what are":11
+    },
+    "q_location": {
+        "where is the":0,
+        "where are the":1,
+        "what room is":2
+    },
+    "q_judge": {
+        "is the":0,
+        "is this":1,
+        "is this a":2,
+        "are the":3,
+        "is there a":4,
+        "is it":5,
+        "is there":6,
+        "is":7,
+        "are there":8,
+        "are these":9,
+        "are":10,
+        "are there any":11,
+        "is this an":12,
+        "was":13,
+        "is that a":14
+    },
+    "q_commonsense": {
+        "does the":0,
+        "does this":1,
+        "do":2,
+        "has":3,
+        "do you":4,
+        "can you":5,
+        "could":6
+    },
+    "q_count": {
+        "how many":0,
+        "how many people":1,
+        "how many people are in":2,
+        "what number is":3,
+        "how many people are":4
+    },
+    "q_action": {
+        "what is the man":0,
+        "is the man":1,
+        "are they":2,
+        "is he":3,
+        "is the woman":4,
+        "what is the person":5,
+        "what is the woman":6,
+        "is this person":7,
+        "is the person":8,
+        "is this":9,
+        "are the":10,
+        "are these":11,
+        "are":12,
+        "is":13,
+        "are there":14,
+        "is there":15,
+        "is this a":16,
+        "is the":17,
+        "is it":18
+    },
+    "q_color": {
+        "what color is the":0,
+        "what color are the":1,
+        "what color":2,
+        "what color is":3,
+        "what is the color of the":4,
+    },
+    "q_type": {
+        "what kind of":0,
+        "what type of":1
+    },
+    "q_subcategory": {
+        "none of the above":0,
+        "what time":1,
+        "what sport is":2,
+        "what animal is":3,
+        "what brand":4,
+    },    
+}
+
 # Comp_task = ['q_subcategory'] [object  attribute   relation    logic   knowledge   scene text
 # All_task = ['q_subcategory']
 # visual-driven task for VQA v2
