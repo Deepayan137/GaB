@@ -101,7 +101,10 @@ class MAS(nn.Module):
     def before_backward(self, model, **kwargs):
         # Check if the task is not the first
         if self.importance is None:
-            return 0.0
+            for idx, p in enumerate(model.parameters()):
+                device = p.device
+                break
+            return torch.tensor(0.0, device = device)
 
         loss_reg = 0.0
 
@@ -152,6 +155,47 @@ class MAS(nn.Module):
                     self.alpha * self.importance[name].expand(new_shape)
                     + (1 - self.alpha) * curr_importance[name].data
                 )
+    def get_state_dict(self):
+        if self.params is None or self.importance is None:
+            return {}
+        params_dict = {}
+        for p in self.params.keys():
+            params_dict[p] = self.params[p].data
+
+        importance_dict = {}
+        for p in self.importance.keys():
+            importance_dict[p] = self.importance[p].data
+        
+        s_dict = {'params': params_dict,
+                    'importance': importance_dict}
+        return s_dict
+    
+    def load_state_dict(self, state_dict):
+        # load params
+        self.params = dict()
+        
+        for name in state_dict['params'].keys():
+            new_shape = state_dict['params'][name].data.shape
+            if name not in self.params:
+                self.params[name] = ParamData(
+                    name,
+                    state_dict['params'][name].shape,
+                    device=state_dict['params'][name].device,
+                    init_tensor=state_dict['params'][name].data.clone(),
+                )
+
+        # load importance
+        self.importance = dict()
+        for name in state_dict['importance'].keys():
+            new_shape = state_dict['importance'][name].data.shape
+            if name not in self.importance:
+                self.importance[name] = ParamData(
+                    name,
+                    state_dict['importance'][name].shape,
+                    device=state_dict['importance'][name].device,
+                    init_tensor=state_dict['importance'][name].data.clone(),
+                )
+
 
 from torchvision.models import resnet18
 from tqdm import tqdm

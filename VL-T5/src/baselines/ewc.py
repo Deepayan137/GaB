@@ -164,7 +164,47 @@ class EWC(nn.Module):
                 + curr_imp.data,
                 device=curr_imp.device,
             )
+    
+    def get_state_dict(self):
+        if self.saved_params is None or self.importances is None:
+            return {}
+        params_dict = {}
+        for p in self.saved_params.keys():
+            params_dict[p] = self.saved_params[p].data
 
+        importance_dict = {}
+        for p in self.importances.keys():
+            importance_dict[p] = self.importances[p].data
+        
+        s_dict = {'params': params_dict,
+                    'importance': importance_dict}
+        return s_dict
+    
+    def load_state_dict(self, state_dict):
+        # load params
+        self.saved_params = dict()
+        
+        for name in state_dict['params'].keys():
+            new_shape = state_dict['params'][name].data.shape
+            if name not in self.saved_params:
+                self.saved_params[name] = ParamData(
+                    name,
+                    state_dict['params'][name].shape,
+                    device=state_dict['params'][name].device,
+                    init_tensor=state_dict['params'][name].data.clone(),
+                )
+
+        # load importance
+        self.importances = dict()
+        for name in state_dict['importance'].keys():
+            new_shape = state_dict['importance'][name].data.shape
+            if name not in self.importances:
+                self.importances[name] = ParamData(
+                    name,
+                    state_dict['importance'][name].shape,
+                    device=state_dict['importance'][name].device,
+                    init_tensor=state_dict['importance'][name].data.clone(),
+                )
 
 ParamDict = Dict[str, Union[ParamData]]
 EwcDataType = Tuple[ParamDict, ParamDict]

@@ -278,6 +278,7 @@ class Trainer(TrainerBase):
 			loss_meter = LossMeter()
 			loss_meter_mem = LossMeter()
 			loss_meter_ques = LossMeter()
+			loss_meter_reg = LossMeter()
 			best_valid = 0.
 			best_epoch = 0
 
@@ -336,10 +337,13 @@ class Trainer(TrainerBase):
 					else:
 						loss_meter_mem.update(-1)
 					
+					if 'reg_loss' in results:
+						loss_meter_reg.update(results['reg_loss'].item())
+						desc_str += f' | Loss_reg {loss_meter_reg.val:4f}'
+					
 					if args.show_train_progress:
 						pbar.set_description(desc_str)
 						pbar.update(1)
-
 
 				if args.show_train_progress:
 					pbar.close()
@@ -365,6 +369,9 @@ class Trainer(TrainerBase):
 					print("Early stopping triggered.")
 					print("Saving Last")
 					break  # Break out of the training loop
+			
+			if self.regularizer is not None:
+				self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader,current_task_id=task_idx)
 		print("Saving Last")
 		self.save(task + "_LAST")
 
@@ -381,7 +388,10 @@ class Trainer(TrainerBase):
 					self.optim_question.zero_grad(set_to_none=True)
 					loss_cap.backward(retain_graph=True)
 					self.optim_question.step()
-	 
+		if self.regularizer is not None:
+			cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
+			loss += cl_reg
+			results['reg_loss'] = cl_reg
 		loss.backward()
 		loss = loss.detach()
 		if self.args.clip_grad_norm > 0:
@@ -543,8 +553,8 @@ def main_worker(args):
 	args.gpu = 0
 	sg_Ours = Sg_task["function"]["oarlks"]
 	if args.train_multi:
-		from src.multi.trainer_multi import TrainerMulti
-		trainer = TrainerMulti(args, sg_Ours, train=True)
+		from src.multi.trainer_multi_sgvqa import SGTrainerMulti
+		trainer = SGTrainerMulti(args, sg_Ours, train=True)
 	else:
 		trainer = Trainer(args, sg_Ours, train=True)
 	if args.now_train:

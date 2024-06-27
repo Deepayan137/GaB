@@ -411,8 +411,8 @@ class Trainer(TrainerBase):
                             print(f"No improvement for {patience_counter} epochs.")
                         if self.args.distributed:
                             dist.barrier()
-                if self.regularizer is not None:
-                    self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader_cate,current_task_id=task_idx,proto_alpha=self.args.proto_alpha,proto_beta= self.args.proto_beta,mem_num_Q = 0,total_num_Q=self.task_total_num)
+                    if self.regularizer is not None:
+                        self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader_cate,current_task_id=task_idx)
                 print("Saving Last")
                 self.save(task + "_LAST")
         except TerminationError:

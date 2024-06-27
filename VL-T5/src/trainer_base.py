@@ -115,11 +115,11 @@ class TrainerBase(object):
         )
         if self.args.lambda_ewc > 0:
             print(f'Using EWC regularization with lambda {self.args.lambda_ewc}')
-            ewc_module = EWC(ewc_lambda=1, decay_factor=0.99, uniform_importance=False)
+            ewc_module = EWC(ewc_lambda=self.args.lambda_ewc, decay_factor=0.99, uniform_importance=False)
             return model, ewc_module
         if self.args.lambda_mas > 0:
             print(f'Using MAS regularization with lambda {self.args.lambda_mas}')
-            mas_module = MAS(lambda_reg=1, alpha=0.99)
+            mas_module = MAS(lambda_reg=self.args.lambda_mas, alpha=0.99)
             return model, mas_module
         return model
 
@@ -228,7 +228,6 @@ class TrainerBase(object):
         else:
             optim = self.args.optimizer(
                 list(self.model.parameters()), self.args.lr)
-
         return optim, lr_scheduler
 
     def load_checkpoint(self, ckpt_path):
@@ -311,6 +310,13 @@ class TrainerBase(object):
                 'query_tokens': actual_model.query_tokens.data, 
                 'language_projection_questions':actual_model.language_projection_questions.state_dict(),
                 'language_projection_answers':actual_model.language_projection_answers.state_dict()}
+                if hasattr(actual_model.vision_model, 'prompt'):
+                    state_dict_to_save['model'].update(actual_model.vision_model.prompt.state_dict())
+                
+                if self.regularizer is not None:
+                    regularizer_state_dict = self.regularizer.get_state_dict()
+                    if regularizer_state_dict:
+                        state_dict_to_save['regularizer'] = regularizer_state_dict
             
             elif self.args.ft_layers == 'last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
@@ -350,6 +356,14 @@ class TrainerBase(object):
                 else:
                     print("Loading the original weights")
                     actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
+                if hasattr(actual_model.vision_model, 'prompt'):
+                    print('Loading prompts weights')
+                    prompt_dict = {'prompt': checkpoint['model']['prompt'], 'prompt_key': checkpoint['model']['prompt_key']}
+                    actual_model.vision_model.prompt.load_state_dict(prompt_dict)
+                
+                if 'regularizer' in checkpoint:
+                    self.regularizer.load_state_dict(checkpoint['regularizer'])
+
             if self.args.ft_layers =='last layer':
                 num_layers = len(actual_model.qformer.encoder.layer)
                 actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
