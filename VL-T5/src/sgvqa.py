@@ -119,11 +119,11 @@ class Trainer(TrainerBase):
 	def build_data_info_path(self, scenario_dir, tsk):
 		# Define the suffix based on M
 		suffix_mapping = {
-		    5000: '_5k',
-		    1000: '_1k',
-		    2500: '_2k',
-		    10000: '_10k',
-		    20000: '_20k'
+			5000: '_5k',
+			1000: '_1k',
+			2500: '_2k',
+			10000: '_10k',
+			20000: '_20k'
 		}
 
 		# Determine the balance type
@@ -376,13 +376,13 @@ class Trainer(TrainerBase):
 				self.optim_question.zero_grad(set_to_none=True)
 				loss_cap.backward(retain_graph=True)
 				self.optim_question.step()
-	    
-        if self.regularizer is not None:
+		
+		if self.regularizer is not None:
 			cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
 			loss += cl_reg
 			results['reg_loss'] = cl_reg
 		
-        loss.backward()
+		loss.backward()
 		loss = loss.detach()
 		if self.args.clip_grad_norm > 0:
 			 torch.nn.utils.clip_grad_norm_(
