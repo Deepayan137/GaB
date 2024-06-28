@@ -118,7 +118,6 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 			param.requires_grad = False
 		print("Freeze vision encoder")
 		self.vision_model = self.vision_model.eval()
-		
 		num_layers = len(self.qformer.encoder.layer)
 		# Freeze all parameters of the query transformer by default
 		for param in self.qformer.parameters():
@@ -209,6 +208,14 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		result = {}
 		result['token_ids'] = output
 		pred_ans = self.processor.tokenizer.batch_decode(output, skip_special_tokens=True) 
+		if pred_ans == ['yesno']:
+			pred_ans = ['yes']
+		elif pred_ans == ['noyes']:
+			pred_ans = ['no']
+		elif pred_ans == ['yesyes']:
+			pred_ans = ['yes']
+		elif pred_ans == ['nono']:
+			pred_ans = ['no']
 		result['pred_ans'] = pred_ans
 		return result
 
@@ -246,7 +253,6 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 			assert 'loss' in output_cap
 			loss_cap = output_cap['loss']
 			result['loss_cap'] = loss_cap
-		
 		result['logits'] = output['logits']
 		result['BL'] = (B, L)
 		if 'loss_memory' in output:

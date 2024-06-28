@@ -91,7 +91,7 @@ class GenQues:
 			# Return the trimmed text if it doesn't start with 'by'
 			return remaining_part
 
-	def inference_qa(self, image_path, datum, task, max_new_tokens=25, method='no_ents'):
+	def inference_qa(self, image_path, datum, task, max_new_tokens=40, method='no_ents'):
 		"""
 		Generate question-answer pairs based on the provided image and method.
 		"""
@@ -145,11 +145,18 @@ class GenQues:
 				print("ooops")
 				return None
 		else:
-			inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
+			inputs = self.processor(image,return_tensors="pt").to(self.device)
 			batch = {'pixel_values': inputs["pixel_values"]}
 			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			question, answer = output['questions'][0].split('?')
-			return [(question.strip()+'?', answer.strip())]
+			try:
+				if task == 'knowledge':
+					question, answer = " ".join(output['questions'][0].split(' ')[:-1]), output['questions'][0].split(' ')[-1]
+				else:
+					question, answer = output['questions'][0].split('?')
+				return [(question.strip()+'?', answer.strip())]
+			except Exception as e:
+				print(f"Error:{e}")
+				return None
 
 	def generate_prompts(self, entities, task, caption=None):
 		"""
@@ -174,24 +181,27 @@ class GenQues:
 		return [(question.strip(), answer.strip())]
 
 if __name__ == "__main__":
-	path = "../datasets/npy_cap_all/function"
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
-	method = 'qtype'
-	task = Sg_task['function']['oarlks'][task_idx]
+	path = "../datasets/npy_no_ents/function"
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4)) 
+	method = 'no_ents'
+	sequence = 'rolak'
+	task = Sg_task['function'][sequence][task_idx]
 	split = int(20000/task_idx)
 	fname = f"fcl_mmf_{task}_train_updated.json"
 	source = os.path.join(path, fname)
 	dest_dir = f'../datasets/npy_{method}/function'
 	os.makedirs(dest_dir, exist_ok=True)
-	dest = os.path.join(f'{dest_dir}', fname)
+	dest_fname = fname if sequence == 'oarlks' else fname.replace('_updated', f'_updated_{sequence}')
+	dest = os.path.join(f'{dest_dir}', dest_fname)
 	with open(source, 'r') as f:
 		data = json.load(f)
-	savepath = f'snap/naiveblip_sgvqa_{method}/'  
+	# savepath = f'snap/naiveblip_sgvqa_{method}/'  
+	savepath = 'snap/naiveblip_sgvqa_no_ents/'
 	gen_ques = GenQues(savepath)
 	incorrect = 0
 	new_data = []
 	for i in range(task_idx):
-		qg_task = Sg_task['function']['oarlks'][i]
+		qg_task = Sg_task['function'][sequence][i]
 		start_idx = i * split
 		end_idx = start_idx + split
 		print(f"Now task is {task} and question generation will be from {qg_task}")
@@ -199,7 +209,7 @@ if __name__ == "__main__":
 		print(f"end idx: {end_idx}")
 		data_subset = data[start_idx:end_idx]
 		gen_ques._load_model(qg_task)
-		gen_ques._load_answers(qg_task)
+		# gen_ques._load_answers(qg_task)
 		print(f'Number of samples: {len(data_subset)}')
 		for _d in tqdm(data_subset):
 			img_name = f"{_d['image_id']}.jpg"

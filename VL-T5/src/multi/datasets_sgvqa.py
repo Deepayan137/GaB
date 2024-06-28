@@ -3,44 +3,35 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
 from torch.utils.data import ConcatDataset
 from torch.utils.data.distributed import DistributedSampler
+from sgvqa_data_blip import SGVQA, SGVQAEvaluator
 
-
-from src.vqa_data_blip import VQAFineTuneDataset, VQAEvaluator
 sys.path.append("..")
-from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_task_list
+from Question_type import Sg_task
 
 
 
-def get_loader_multi(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
-			   batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what'):
-
-	verbose = (gpu == 0)
+def get_loader_multi(args, split='train', scenario='scene',
+			   batch_size=32, workers=4, task='object'):
+	verbose = True
 	dataset_num = 0
 	all_datasets = []
-	cates = list(range(80))
-	for task in All_task_list:
-		dataset = VQAFineTuneDataset(
-			coco_Ours,
-			Examplar_set,
-			split,
-			raw_dataset=_dset,
-			rank=gpu,
-			topk=topk,
-			verbose=verbose,
-			args=args,
-			mode=mode,
-			task=task,
-			cates=cates,)
+	for task in Sg_task['function']['oarlks']:
+		dataset = SGVQA(
+				split=split,
+				verbose=verbose,
+				args=args,
+				scenario=scenario,
+				task=task)
 		all_datasets.append(dataset)
 		dataset_num += len(dataset)
 	
 	concat_dataset = ConcatDataset(all_datasets)
-	print(f"Number of samples in the dataset:{len(concat_dataset)}")
-	if distributed:
+	print(f"No. of samples in train data is {len(concat_dataset)}")
+	if args.distributed:
 		sampler = DistributedSampler(concat_dataset)
 	else:
 		sampler = None
-	if mode == 'train':
+	if split == 'train':
 		loader = DataLoader(
 			concat_dataset, batch_size=batch_size, shuffle=None if (sampler is not None) else True,
 			num_workers=workers, pin_memory=True, sampler=sampler,
@@ -55,43 +46,36 @@ def get_loader_multi(args, coco_Ours, Examplar_set, _dset, split='karpathy_train
 			collate_fn=dataset.collate_fn,
 			drop_last=False)
 	if verbose:
-		loader.evaluator = VQAEvaluator(_dset)
+		loader.evaluator = SGVQAEvaluator()
 
 	loader.task = 'vqa'
 	total_num = dataset_num
 	return loader, total_num
 
-def get_loader_test_multi(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
-			   batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what'):
+def get_loader_test_multi(args, split='train', scenario='scene',
+			   batch_size=32, workers=4, task='what'):
 
-	verbose = (gpu == 0)
+	verbose = True
 	dataset_num = 0
 	all_datasets = []
-	cates = list(range(80))
-	for task in All_task_list:
-		dataset = VQAFineTuneDataset(
-			coco_Ours,
-			Examplar_set,
-			split,
-			raw_dataset=_dset,
-			rank=gpu,
-			topk=topk,
-			verbose=verbose,
-			args=args,
-			mode=mode,
-			task=task,
-			cates=[i for i in range(80)],) # all categories
+	for task in Sg_task['function']['oarlks']:
+		dataset = SGVQA(
+				split=split,
+				verbose=verbose,
+				args=args,
+				scenario=scenario,
+				task=task)
 		all_datasets.append(dataset)
 		dataset_num += len(dataset)
 	
 	concat_dataset = ConcatDataset(all_datasets)
-	print(f"Number of samples in the dataset:{len(concat_dataset)}")
-	if distributed:
+	print(f"No. of samples in test data is {len(concat_dataset)}")
+	if args.distributed:
 		sampler = DistributedSampler(concat_dataset)
 	else:
 		sampler = None
 
-	if mode == 'train':
+	if split == 'train':
 		loader = DataLoader(
 			concat_dataset, batch_size=batch_size, shuffle=(sampler is None),
 			num_workers=workers, pin_memory=True, sampler=sampler,
@@ -107,7 +91,7 @@ def get_loader_test_multi(args, coco_Ours, Examplar_set, _dset, split='karpathy_
 			drop_last=False)
 
 	if verbose:
-		loader.evaluator = VQAEvaluator(_dset)
+		loader.evaluator = SGVQAEvaluator()
 
 	loader.task = 'vqa'
 	return loader

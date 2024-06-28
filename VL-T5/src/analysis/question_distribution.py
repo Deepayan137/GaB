@@ -25,7 +25,6 @@ def get_question_dist(predictions):
 	# Increment the count for each prediction
 	for prediction in predictions:
 		label_counts[prediction] += 1  # Directly increment the count of each prediction
-
 	return label_stats(label_counts)
 
 def _load_classifier_ckpt(classifier, sub_task, name='sgvqa'):
@@ -41,9 +40,7 @@ def _load_classifier_ckpt(classifier, sub_task, name='sgvqa'):
 		print("No ckpt found")
 	return classifier
 
-def load_gen_data(task):
-	cap_root = "../datasets/npy_no_ents/function/"
-	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_unbalanced.json")
+def load_gen_data(task, json_path, All_task):
 	with open(json_path, 'r') as f:
 		data = json.load(f)
 	task_idx = All_task.index(task)
@@ -53,7 +50,7 @@ def load_gen_data(task):
 		if sub_task not in data_:
 			data_[sub_task] = []
 		for datum in data:
-			question_key = f'Q'
+			question_key = f'Q_{sub_task}'
 			if question_key in datum:
 				data_[sub_task].append(datum[question_key])
 	return data_
@@ -70,9 +67,13 @@ def load_orig_data(task, split, size=5000):
 	return data_
 
 
-def sample_by_predicted_labels(train_data, predictions, desired_counts, total_target=5000):
-	from collections import defaultdict
+def sample_by_predicted_labels(train_data, predictions, desired_counts, total_target=5000, seed=42):
 	import random
+	from collections import defaultdict
+	
+	# Set random seed for reproducibility
+	random.seed(seed)
+	
 	# Mapping from labels to list of indices that have this label
 	label_indices = defaultdict(list)
 	for index, label in enumerate(predictions):
@@ -81,54 +82,44 @@ def sample_by_predicted_labels(train_data, predictions, desired_counts, total_ta
 	# Sample indices according to desired counts
 	sampled_indices = []
 	current_total = 0
-	surplus_indices = defaultdict(list)
 	for label, count in desired_counts.items():
 		if label in label_indices:
 			if len(label_indices[label]) >= count:
 				sampled = random.sample(label_indices[label], count)
-				sampled_indices.extend(sampled)
-				current_total += count
-				surplus_indices[label] = [idx for idx in label_indices[label] if idx not in sampled]
 			else:
-				# If there aren't enough data as desired, take all available and print a warning
-				sampled_indices.extend(label_indices[label])
-				current_total += len(label_indices[label])
-				print(f"Warning: Not enough data for label {label}. Needed {count}, got {len(label_indices[label])}.")
+				# If there aren't enough data as desired, repeat elements
+				sampled = random.choices(label_indices[label], k=count)
+				print(f"Warning: Not enough data for label {label}. Needed {count}, got {len(label_indices[label])}, allowing repetition.")
+			sampled_indices.extend(sampled)
+			current_total += count
+		else:
+			print(f"Warning: No data available for label {label}. Needed {count}.")
 	
-	if current_total < total_target:
-		deficit = total_target - current_total
-		total_surplus = sum(len(indices) for indices in surplus_indices.values())
-		if total_surplus > 0:
-			for label, indices in surplus_indices.items():
-				if deficit <= 0:
-					break
-				surplus_proportion = len(indices) / total_surplus
-				additional_samples = int(deficit * surplus_proportion)
-				additional_samples = min(additional_samples, len(indices))
-				sampled_indices.extend(random.sample(indices, additional_samples))
-				deficit -= additional_samples
-			if deficit > 0:
-				all_surplus_indices = [idx for indices in surplus_indices.values() for idx in indices]
-				if all_surplus_indices:
-					additional_samples = random.sample(all_surplus_indices, min(deficit, len(all_surplus_indices)))
-					sampled_indices.extend(additional_samples)
-					deficit -= len(additional_samples)
+	# Collect the actual data points from the sampled indices
 	sampled_data = [train_data[idx] for idx in sampled_indices]
+	
+	# Optionally, adjust the number of sampled data to match the total target size
+	if len(sampled_data) > total_target:
+		print(f"Warning: Sampled more data than the target ({len(sampled_data)} items), reducing to {total_target}.")
+		sampled_data = sampled_data[:total_target]
+	elif len(sampled_data) < total_target:
+		print(f"Warning: Sampled less data than the target ({len(sampled_data)} items), expected {total_target}.")
+
 	return sampled_data
 
-def cluster_questions(questions, task, batch_size=32, n_clusters=10, train=False, name='sgvqa'):
+
+def cluster_questions(questions, task, batch_size=32, n_clusters=10, train=False, filename=None):
 	# Placeholder for all embeddings
 	all_embeddings = []
-	if name == 'sgvqa':
-		filename = f'ckpt/kmeans_{task}.pkl'
-	else:
-		filename = f'ckpt_vqacl/kmeans_{task}.pkl'
+	# if name == 'sgvqa':
+	# 	filename = f'ckpt/kmeans_{task}.pkl'
+	# else:
+	# 	filename = f'ckpt_vqacl/kmeans_{task}.pkl'
 	# Generate embeddings for all questions
 	for i in trange(0, len(questions[task]), batch_size):
 		batch_questions = questions[task][i:i + batch_size]
 		embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
 		all_embeddings.extend(embeddings)
-
 	# Stack all embeddings into a single tensor
 	embeddings_tensor = torch.stack(all_embeddings)
 	embeddings_tensor = embeddings_tensor.cpu().numpy()  # Convert to numpy array for KMeans
@@ -178,10 +169,15 @@ def classify_questions(model, questions, task, batch_size=32):
 
 if __name__ == "__main__":
 	strategy = 'cluster'
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
-	All_task = Sg_task['function']['oarlks']
+	print(strategy)
+	sequence = 'lkora'
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2))
+	All_task = Sg_task['function'][sequence]
 	task = All_task[task_idx]  # Simplified to only run for the first task
-	created = load_gen_data(task)
+	cap_root = "../datasets/npy_no_ents/function/"
+	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated_{sequence}.json")
+	print(json_path)
+	created = load_gen_data(task, json_path, All_task)
 	input_dim = 768
 	hidden_dim = 256
 	summary_dict = defaultdict(dict)
@@ -195,26 +191,28 @@ if __name__ == "__main__":
 			classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
 			classifier = _load_classifier_ckpt(classifier, sub_task)
 			predictions_created = classify_questions(classifier, created, sub_task)
-			predictions_train = classify_questions(classifier, train_data, sub_task)
+			predictions_test = classify_questions(classifier, test_data, sub_task)
 		elif strategy == 'cluster':
-			if not os.path.exists(f'ckpt/kmeans_{task}.pkl'):
-				predictions_train = cluster_questions(train_data, sub_task, train=True, name='sgvqa')
-			predictions_test = cluster_questions(test_data, sub_task, train=False, name='sgvqa')
-			predictions_created = cluster_questions(created, sub_task, name='sgvqa')
+			filename = f'ckpt/kmeans_{sub_task}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+			print(f"hahahaha {filename}")
+			if not os.path.exists(filename):
+				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename)
+			predictions_test = cluster_questions(test_data, sub_task, train=False, filename=filename)
+			predictions_created = cluster_questions(created, sub_task, filename=filename)
 		label_counts_created = get_question_dist(predictions_created)
-		label_counts_train = get_question_dist(predictions_test)
+		label_counts_test = get_question_dist(predictions_test)
 
 		# Store results in a more readable format
 		summary_dict[sub_task] = {
-			'balanced': {str(k): v for k, v in label_counts_train.items()},
+			'balanced': {str(k): v for k, v in label_counts_test.items()},
 			'unbalanced': {str(k): v for k, v in label_counts_created.items()}
 		}
 
 		print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
-		print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_train}')
+		print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_test}')
 
 	# Save results based on strategy
-	file_name = "question_dist_via_clustering.json" if strategy == 'cluster' else "question_dist.json"
+	file_name = f"question_dist_via_clustering_{sequence}.json" if strategy == 'cluster' else f"question_dist_{sequence}.json"
 	with open(os.path.join("metrics", f"sgvqa_{task}_{file_name}"), 'w') as f:
 		json.dump(summary_dict, f, indent=4)
 

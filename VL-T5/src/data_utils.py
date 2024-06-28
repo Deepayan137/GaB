@@ -32,11 +32,12 @@ All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count',
 def build_data_info_path(args, scenario_dir, tsk):
 		# Define the suffix based on M
 		suffix_mapping = {
-		    5000: '_5k',
-		    1000: '_1k',
-		    2500: '_2k',
-		    10000: '_10k',
-		    20000: '_20k',
+			500: '_0.5k',
+			1000: '_1.0k',
+			5000: '_5.0k',
+			2500: '_2.5k',
+			10000: '_10k',
+			20000: '_20k',
 		}
 
 		# Determine the balance type
@@ -107,6 +108,18 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 			All_examplar = []
 			for E_set in Examplar_set:
 				All_examplar += Examplar_set[E_set]
+		new_data = []
+		for datum in All_examplar:
+			new_datum = {}
+			for k,v in datum.items():
+				if k.startswith("Q_"):
+					new_datum['Q'] = datum[k]
+				elif k.startswith("A_"):
+					new_datum['A'] = datum[k]
+				else:
+					new_datum[k] = datum[k]
+			new_data.append(new_datum)
+		All_examplar = new_data
 	else:
 		All_examplar = data_info_dicts[:each_memory]
 	print("# The size of the cate Memory:", len(All_examplar))

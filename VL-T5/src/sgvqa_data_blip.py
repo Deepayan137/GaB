@@ -1,4 +1,5 @@
 import os
+import math
 import sys
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader, Dataset, Sampler
@@ -25,14 +26,10 @@ class SGVQA(Dataset):
 		filename = f'fcl_mmf_{task}_{split}.npy'
 		data_path = os.path.join('../datasets/npy', scenario, filename)
 		print(data_path)
-		# with open(data_path, 'r') as f:
-		# 	data = json.load(f)
 		self.task = task
 		self.data = np.load(data_path, allow_pickle=True)
-		# self.data = self.data[:50]
 
 		self.args=args
-		# if 'blip' in self.args.backbone:
 		self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
 		self.processor.tokenizer.padding_side = 'right'
 		self.processor.tokenizer.truncation_side = 'right'
@@ -95,7 +92,7 @@ class SGVQA(Dataset):
 				qtype = 0
 			caption = f"Question Type:{qtype} Question:{datum['question']} Answer:{answer}"
 		else:
-			caption = f"{datum['question']} {answer}"
+			caption = f"{datum['question']} {datum['answer']}"
 		
 		cap_ids = self.processor.tokenizer.encode(caption, max_length=70, truncation=True)
 		out_dict['cap_ids'] = torch.LongTensor(cap_ids)
@@ -294,8 +291,29 @@ class SGVQA_memory(Dataset):
 		batch_entry['task'] = 'sgvqa'
 		return batch_entry
 
+
+def sample_by_labels(args, predictions, split, sub_task, task):
+	if args.balance_strategy == 'cluster':
+		with open(f'metrics/sgvqa_{task}_question_dist_via_clustering.json', 'r') as f:
+			desired_counts = json.load(f)
+	else:
+		with open(f'metrics/sgvqa_{task}_question_dist.json', 'r') as f:
+			desired_counts = json.load(f)
+	desired_task_counts = desired_counts[sub_task]['balanced']
+	desired_task_counts = {int(k):math.ceil(v*split/100.) for k,v in desired_task_counts.items()}
+	label_indices = defaultdict(list)
+	for index, label in enumerate(predictions):
+		label_indices[int(label)].append(index)
+	sampled_indices = []
+	for label, count in desired_task_counts.items():
+		if label in label_indices:
+			if len(label_indices[label]) >= count:
+				sampled = random.sample(label_indices[label], count)
+				sampled_indices.extend(sampled)
+	return sampled_indices[:split]
+
 def get_loader_memory(args, Examplar_set, split='train', scenario='scene',
-			   batch_size=32, workers=4):
+			   batch_size=32, workers=4, num_iters=None, lengths=None, all_predictions=None, task=None):
 
 	verbose = True
 	def cat_loader():
@@ -304,14 +322,30 @@ def get_loader_memory(args, Examplar_set, split='train', scenario='scene',
 			split=split,
 			verbose=verbose,
 			args=args)
-
-		
 		if split == 'train':
-			shuffle = len(dataset) > 0
-			loader = DataLoader(dataset, 
-				batch_size=batch_size, shuffle=shuffle,
-				num_workers=workers, pin_memory=True,
-				collate_fn=dataset.collate_fn)
+			if args.replay_strategy == 'dynamic':
+				print("This is part of the dynamic rehearsal. We will take subsets")
+				adjusted_indices = []
+				for _ in range(num_iters):
+					if args.dynamic_sampling == 'random':
+						indices = [np.random.choice(length, (batch_size//len(lengths)), replace=False) for length in lengths]
+					if args.dynamic_sampling == 'balanced':
+						indices = [sample_by_labels(args, preds, (batch_size//len(lengths)), sub_task, task) for sub_task, preds in all_predictions.items()]
+					offsets = [sum(lengths[:i]) for i in range(len(lengths))]
+					for offset, indices_for_dataset in zip(offsets, indices):
+						adjusted_indices.extend([index + offset for index in indices_for_dataset])
+				subset = Subset(dataset, adjusted_indices)
+				loader = DataLoader(subset, 
+					batch_size=batch_size, shuffle=True,
+					num_workers=workers, pin_memory=True,
+					collate_fn=dataset.collate_fn)
+			else:
+				print("This is part of the static rehearsal")
+				shuffle = len(dataset) > 0
+				loader = DataLoader(dataset, 
+					batch_size=batch_size, shuffle=shuffle,
+					num_workers=workers, pin_memory=True,
+					collate_fn=dataset.collate_fn)
 		else:
 			loader = DataLoader(
 				dataset,
@@ -463,7 +497,7 @@ class SGVQAEvaluator:
 	def evaluate_raw(self, quesid2ans: dict, is_topk_optimal=None):
 		self.accuracy     = {}
 		self.evalQA       = {}
-
+		self.evalQuesType = {}
 		accQA = []
 		accQuesType = {}
 		accAnsType = {}
@@ -487,9 +521,15 @@ class SGVQAEvaluator:
 				matchingAns = [item for item in otherGTAns if item[1] == resAns]
 				acc = min(1, float(len(matchingAns))/3)
 				gtAcc.append(acc)
+			
+			# quesType = Sgvqa_QId2Qtype[quesId]
 			avgGTAcc = float(sum(gtAcc))/len(gtAcc)
 			accQA.append(avgGTAcc)
+			# if quesType not in accQuesType:
+			# 	accQuesType[quesType] = []
+			# accQuesType[quesType].append(avgGTAcc)
 			self.setEvalQA(quesId, avgGTAcc)
+			# self.setEvalQuesType(quesId, quesType, avgGTAcc)
 		if len(accQA) == 0:
 			return {
 				'overall': 0,
@@ -497,7 +537,7 @@ class SGVQAEvaluator:
 				'perAnswerType': {}
 			}
 		else:
-			self.setAccuracy(accQA)
+			self.setAccuracy(accQA, accQuesType)
 		return self.accuracy
 
 	def normalize_answer(self, resAns):
@@ -539,9 +579,14 @@ class SGVQAEvaluator:
 	def setEvalQA(self, quesId, acc):
 		self.evalQA[quesId] = round(100*acc, self.n)
 
-	def setAccuracy(self, accQA):
-		self.accuracy['overall']  = round(100*float(sum(accQA))/len(accQA), self.n)
+	def setEvalQuesType(self, quesId, quesType, acc):
+		if quesType not in self.evalQuesType:
+			self.evalQuesType[quesType] = {}
+		self.evalQuesType[quesType][quesId] = round(100*acc, self.n)
 
+	def setAccuracy(self, accQA, accQuesType):
+		self.accuracy['overall']  = round(100*float(sum(accQA))/len(accQA), self.n)
+		self.accuracy['perQuestionType'] = {quesType: round(100*float(sum(accQuesType[quesType]))/len(accQuesType[quesType]), self.n) for quesType in accQuesType}
 
 if __name__ == "__main__":
 	from src.param import parse_args
@@ -550,55 +595,29 @@ if __name__ == "__main__":
 	args.backbone = 'blip'
 	split = f'val'
 	scenario='function'
-	task='attribute'
+	args.replay_strategy ='dynamic'
+	args.dynamic_sampling = 'balanced'
 	args.use_gen_data = True
-	# args.use_qtype = True
-	data_info_path = (f'../datasets/npy_no_ents/{scenario}/' + f'fcl_mmf_attribute_train_balanced.json')
+	task='knowledge'
+	data_info_path = (f'../datasets/npy_no_ents/{scenario}/' + f'fcl_mmf_{task}_train_cluster_full.json')
 	with open(data_info_path, 'r') as file:
-		All_examplar = json.load(file)
-	# filtered_exemplars = []
-	# for datum in All_examplar:
-	# 	new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
-	# 	# Extract questions and answers, filter out 'not specified' answers
-	# 	questions = [datum[key] for key in datum if key.startswith('Q_')]
-	# 	answers = [datum[key] for key in datum if key.startswith('A_cap')]
-	# 	qa_pairs = [(q, a) for q, a in zip(questions, answers) if (a != 'not specified') or (a != "not sure")]
-	# 	# Only add non-empty QA pairs back to the new datum
-	# 	if qa_pairs:
-	# 		questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
-	# 		new_datum['Q'] = questions
-	# 		new_datum['A'] = answers
-	# 		filtered_exemplars.append(new_datum)
-
-	# All_examplar = filtered_exemplars
-
-	# # Filter and reformat the exemplar data
-	# filtered_exemplars = []
-	# for datum in data_info_dicts:
-	#   new_datum = {k: v for k, v in datum.items() if not k.startswith(('Q_', 'A_'))}
-	#   # Extract questions and answers, filter out 'not specified' answers
-	#   questions = [datum[key] for key in datum if key.startswith('Q_')]
-	#   answers = [datum[key] for key in datum if key.startswith('A_')]
-	#   qa_pairs = [(q, a) for q, a in zip(questions[0], answers[0]) if a != 'not specified']
-	#   # Only add non-empty QA pairs back to the new datum
-	#   if qa_pairs:
-	#       questions, answers = zip(*qa_pairs)  # Unpack the filtered pairs
-	#       new_datum['Q'] = questions
-	#       new_datum['A'] = answers
-	#       filtered_exemplars.append(new_datum)
-
-	# # Replace the original list with the filtered list
-	# All_examplar = filtered_exemplars
-
-	# random.shuffle(data_info_dicts)  # shuffle
-	# All_examplar = data_info_dicts[:5000]
-	# loader, _= get_loader(args, scenario='function', task='attribute',split='train', batch_size=32, workers=0)
-	loader = get_loader_memory(args, All_examplar, scenario='function', split='train', batch_size=32, workers=0)
-	# quesid2ans = {}
-	# gtAnswers = {}
-	for batch in loader:
+		task_specific_examplar = json.load(file)
+	All_examplar = []
+	dataset_lengths = []
+	all_predictions = {}
+	for  k, v in task_specific_examplar.items():
+		All_examplar += v
+		dataset_lengths.append(len(v))
+		predictions = []
+		for item in v:
+			predictions.append(item['cluster_prediction'])
+		all_predictions[k] = predictions
+	loader = get_loader_memory(args, All_examplar, 
+		scenario='function', split='train', 
+		batch_size=32, workers=0, num_iters=100, lengths=dataset_lengths, all_predictions=all_predictions, task=task)
+	for batch in tqdm(loader):
 		data=batch['target_ids']
-		import pdb;pdb.set_trace()
+
 	#   answers = batch['answers']
 	#   qids = batch['question_ids']
 	#   all_answers = batch['all_answers']

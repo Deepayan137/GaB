@@ -108,8 +108,9 @@ class Trainer(TrainerBase):
             from transformers.models.blip_2.modeling_blip_2 import Blip2ForConditionalGeneration
             if args.blip_model == "naiveblip":
                 model_class = NaiveBLIP2
-            else:
+            elif args.blip_model == 'vqaclblip':
                 model_class = BLIP2Prototype
+
 
         config = self.create_config()
         self.tokenizer = self.create_tokenizer()
@@ -135,13 +136,7 @@ class Trainer(TrainerBase):
         self.model = self.model.to(args.gpu)
         if self.regularizer is not None:
             self.regularizer = self.regularizer.to(args.gpu)
-        if 'blip' in self.args.backbone:
-            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-            if self.args.use_cap_loss:
-                print("We will use caption loss and two optimizers")
-                self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
-                        weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
-            self.lr_scheduler = None
+        
         if args.multiGPU:
             if args.distributed:
                 self.model = DDP(self.model, device_ids=[args.gpu],
@@ -172,6 +167,7 @@ class Trainer(TrainerBase):
             if idx <= latest_task_idx:
                 self.task_iftrain[task] = 1
         self.load(checkpoint_model)
+        self.Examplar_set = self.model.Examplar_set
         print(f'Success to load the checkpoint from the task {checkpoint_name}')
 
     def train(self, load=False):
@@ -315,6 +311,12 @@ class Trainer(TrainerBase):
                             total_train_num = len(self.train_loader_cate.dataset)
                         if 't5' in self.args.backbone:
                             self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(total_train_num)
+                        elif 'blip' in self.args.backbone:
+                            self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
+                            if self.args.use_cap_loss:
+                                print("We will use caption loss and two optimizers")
+                                self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
+                                    weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
                         if self.args.fp16 and _use_native_amp:
                             self.scaler = torch.cuda.amp.GradScaler()
                         elif _use_apex:
@@ -418,8 +420,8 @@ class Trainer(TrainerBase):
                             print(f"No improvement for {patience_counter} epochs.")
                         if self.args.distributed:
                             dist.barrier()
-                if self.regularizer is not None:
-                    self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader_cate,current_task_id=task_idx,proto_alpha=self.args.proto_alpha,proto_beta= self.args.proto_beta,mem_num_Q = 0,total_num_Q=self.task_total_num)
+                    if self.regularizer is not None:
+                        self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader_cate,current_task_id=task_idx,proto_alpha=self.args.proto_alpha,proto_beta= self.args.proto_beta,mem_num_Q = 0,total_num_Q=self.task_total_num)
                 print("Saving Last")
                 self.save(task + "_LAST")
         except TerminationError:

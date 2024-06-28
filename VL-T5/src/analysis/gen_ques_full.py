@@ -55,16 +55,20 @@ class GenQues:
 		inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
 		batch = {'pixel_values': inputs["pixel_values"]}
 		output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-		question, answer = output['questions'][0].split('?')
-		return [(question.strip()+'?', answer.strip())]
+		try:
+			question, answer = output['questions'][0].split('?')
+			return [(question.strip()+'?', answer.strip())]
+		except:
+			return None
 
 
 def main():
 	# Configuration and setup
 	classify_strategy = "cluster"
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4))
 	method = 'no_ents'
+	sequence = 'oarlks'
 	task = Sg_task['function']['oarlks'][task_idx]
 	fname = f"fcl_mmf_{task}_train.npy"
 	npy_path = os.path.join('../datasets/npy/function', fname)
@@ -73,57 +77,80 @@ def main():
 	data = data[:10000]  # Taking a slice for testing
 	dest_dir = f'../datasets/npy_{method}/function'
 	os.makedirs(dest_dir, exist_ok=True)
-	dest_file = os.path.join(dest_dir, fname.replace('.npy', f'_{classify_strategy}_full.json'))
-	save_path = f'snap/naiveblip_sgvqa_{method}/'
 	
-	gen_ques = GenQues(save_path)
-	incorrect_count = 0
-	processed_data = {}
-	final_data = {}
-	input_dim = 768
-	hidden_dim = 256
-	# Data processing
-	sub_task_questions = {}
-	for idx in trange(task_idx):
-		qg_task = Sg_task['function']['oarlks'][idx]
-		processed_data[qg_task] = []
-		final_data[qg_task] = []
-		output_dim = len(qtype_dict[qg_task])
-		classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
-		classifier = _load_classifier_ckpt(classifier, qg_task)
-		gen_ques._load_model(qg_task)
-		print(f'Processing {len(data)} samples for task: {qg_task}')
-		sub_task_questions[qg_task] = []
-		for entry in (data):
-			
-			# Create a deep copy of entry to ensure unique modification per task
-			task_entry = copy.deepcopy(entry)
-			img_name = f"{task_entry['image_id']}.jpg"
-			img_path = os.path.join("../datasets/gvqa/", img_name)
-			pairs = gen_ques.inference_qa(img_path, task_entry, qg_task, method=method)
-			
-			if pairs:
-				questions, answers = zip(*pairs)
-				task_entry[f'Q'] = questions[0]
-				task_entry[f'A'] = answers[0]
-				processed_data[qg_task].append(task_entry)
-				sub_task_questions[qg_task].append(questions[0])
-			else:
-				incorrect_count += 1
-		if classify_strategy == "classifier":
-			print("Classifying questions")
-			predictions = classify_questions(classifier, sub_task_questions, qg_task)
-		elif classify_strategy == "cluster":
-			print("Clustering questions")
-			predictions = cluster_questions(sub_task_questions, qg_task, train=False)
-		for index, datum_dict in enumerate(processed_data[qg_task]):
-			datum_dict[f'{classify_strategy}_prediction'] = str(predictions[index])
-			final_data[qg_task].append(datum_dict)
-	# Summary and saving output
-	total_samples = len(data) * task_idx
-	print(f"Incorrect: {incorrect_count} in {total_samples} samples")
-	with open(dest_file, 'w') as file:
-		json.dump(processed_data, file, indent=4)
+	dest_file = os.path.join(dest_dir, fname.replace('.npy', f'_{classify_strategy}_full.json'))
+	if not os.path.exists(dest_file):
+		save_path = f'snap/naiveblip_sgvqa_{method}/'
+		
+		gen_ques = GenQues(save_path)
+		incorrect_count = 0
+		processed_data = {}
+		final_data = {}
+		input_dim = 768
+		hidden_dim = 256
+		# Data processing
+		sub_task_questions = {}
+		for idx in trange(task_idx):
+			qg_task = Sg_task['function']['oarlks'][idx]
+			processed_data[qg_task] = []
+			final_data[qg_task] = []
+			output_dim = len(qtype_dict[qg_task])
+			classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
+			classifier = _load_classifier_ckpt(classifier, qg_task)
+			gen_ques._load_model(qg_task)
+			print(f'Processing {len(data)} samples for task: {qg_task}')
+			sub_task_questions[qg_task] = []
+			for entry in (data):
+				
+				# Create a deep copy of entry to ensure unique modification per task
+				task_entry = copy.deepcopy(entry)
+				img_name = f"{task_entry['image_id']}.jpg"
+				img_path = os.path.join("../datasets/gvqa/", img_name)
+				pairs = gen_ques.inference_qa(img_path, task_entry, qg_task, method=method)
+				
+				if pairs:
+					questions, answers = zip(*pairs)
+					task_entry[f'Q'] = questions[0]
+					task_entry[f'A'] = answers[0]
+					processed_data[qg_task].append(task_entry)
+					sub_task_questions[qg_task].append(questions[0])
+				else:
+					incorrect_count += 1
+			# if classify_strategy == "classifier":
+			# 	print("Classifying questions")
+			# 	predictions = classify_questions(classifier, sub_task_questions, qg_task)
+			# elif classify_strategy == "cluster":
+			# 	print("Clustering questions")
+			# 	predictions = cluster_questions(sub_task_questions, qg_task, train=False)
+			# for index, datum_dict in enumerate(processed_data[qg_task]):
+			# 	datum_dict[f'{classify_strategy}_prediction'] = str(predictions[index])
+			# 	final_data[qg_task].append(datum_dict)
+		# Summary and saving output
+		total_samples = len(data) * task_idx
+		print(f"Incorrect: {incorrect_count} in {total_samples} samples")
+		with open(dest_file, 'w') as file:
+			json.dump(processed_data, file, indent=4)
+	else:
+		with open(dest_file, 'r') as f:
+			data_all = json.load(f)
+		new_data_all = {}
+		for sub_task, data in data_all.items():
+			new_data_all[sub_task] = []
+			sub_task_questions = {sub_task:[]}
+			for datum in data:
+				questions = datum.get('Q', [])
+				sub_task_questions[sub_task].append(questions)
+			filename = f'ckpt/kmeans_{sub_task}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+			predictions = cluster_questions(sub_task_questions, sub_task, train=False, filename=filename)
+			new_data = []
+			for i, datum in enumerate(data):
+				datum['cluster_prediction'] = str(predictions[i])
+				new_data.append(datum)
+			new_data_all[sub_task] = new_data
+		print(f"saving @ {dest_file}")
+		with open(dest_file, 'w') as file:
+			json.dump(new_data_all, file, indent=4)
+
 
 if __name__ == "__main__":
 	main()

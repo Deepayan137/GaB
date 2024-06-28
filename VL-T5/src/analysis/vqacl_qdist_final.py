@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, '../')
 from Question_type import *
 from src.analysis.question_classifier import get_embedding, QuestionTypeClassifier, cat_dict
-from src.analysis.question_distribution import classify_questions, cluster_questions, get_question_dist, _load_classifier_ckpt
+from src.analysis.question_distribution import classify_questions, cluster_questions, get_question_dist
 
 
 def load_gen_data(task):
@@ -25,7 +25,7 @@ def load_gen_data(task):
 		if sub_task not in data_:
 			data_[sub_task] = []
 		for datum in data:
-			question_key = f'Q_{sub_task}'
+			question_key = f'Q'
 			if question_key in datum:
 				data_[sub_task].append(datum[question_key])
 	return data_
@@ -55,8 +55,17 @@ def label_stats(label_counts):
 
 if __name__ == "__main__":
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
+	mem_size = 2500
+	strategy = 'none'
+	balance_status = 'unbalanced'
+	if strategy == 'classifer':
+		
 	task = All_task[task_idx]
-	created = load_gen_data(task)
+	root = "../datasets/vqa/Partition_Q_V2_no_ents/karpathy_train_"
+	json_path = root + task + '.json'
+	json_path_suffix = f"{float(mem_size/1000)}k" if mem_size != 10000 else "10k"
+	json_path = json_path.replace('.json', f'_{balance_status}_{savepath_suffix}.json')
+	created = load_gen_data(savepath)
 	input_dim = 768
 	hidden_dim = 256
 	strategy = 'cluster'
@@ -68,28 +77,27 @@ if __name__ == "__main__":
 		summary_dict[sub_task] = {}
 		output_dim = len(cat_dict_vqacl[sub_task])
 		train_data = load_orig_data(sub_task, 'train', size=20000)
-		test_data = load_orig_data(sub_task, 'train', size=5000)
+		test_data = load_orig_data(sub_task, 'test', size=5000)
 		if strategy == 'classify':
 			classifier = QuestionTypeClassifier(input_dim, hidden_dim, output_dim).to(device)
 			classifier = _load_classifier_ckpt(classifier, sub_task, name='vqacl')
 			predictions_created = classify_questions(classifier, created, sub_task)
-			predictions_train = classify_questions(classifier, test_data, sub_task)
+			predictions_train = classify_questions(classifier, train_data, sub_task)
 		elif strategy == 'cluster':
-			filename = f'ckpt_vqacl/kmeans_{task}.pkl'
-			if not os.path.exists(filename):
-				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename)
-			predictions_created = cluster_questions(created, sub_task, train=False, filename=filename)
-			predictions_train = cluster_questions(test_data, sub_task, train=False, filename=filename)
-			
-		label_counts_created = get_question_dist(predictions_created)
-		label_counts_train = get_question_dist(predictions_train)
+			if not os.path.exists(f'ckpt_vqacl/kmeans_{task}.pkl'):
+				predictions_train = cluster_questions(train_data, sub_task, train=True, name='vqacl')
+			predictions_test = cluster_questions(test_data, sub_task, train=False, name='vqacl')
+			# predictions_created = cluster_questions(created, sub_task, train=False, name='vqacl')
+
+		# label_counts_created = get_question_dist(predictions_created)
+		label_counts_train = get_question_dist(predictions_test)
 		# Store results in a more readable format
 		summary_dict[sub_task] = {
 			'balanced': {str(k): v for k, v in label_counts_train.items()},
-			'unbalanced': {str(k): v for k, v in label_counts_created.items()}
+			# 'unbalanced': {str(k): v for k, v in label_counts_created.items()}
 		}
 		
-		print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
+		# print(f'For task {sub_task} the distribution of labels in synthetic data is {label_counts_created}')
 		print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_train}')
 	
 	file_name = "question_dist_via_clustering.json" if strategy == 'cluster' else "question_dist.json"

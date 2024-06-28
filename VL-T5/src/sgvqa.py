@@ -60,7 +60,7 @@ class Trainer(TrainerBase):
 		from vqa_model import VLT5VQA
 		from vqa_model_blip import NaiveBLIP2
 		model_kwargs = {'ft_layers':args.ft_layers, 
-		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool}
+		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss}
 		if args.prompt_pool:
 			print("Activating Learning to Prompt")
 		# model_kwargs = {}
@@ -89,13 +89,7 @@ class Trainer(TrainerBase):
 		self.model = self.model.to(args.gpu)
 		if self.regularizer is not None:
 			self.regularizer = self.regularizer.to(args.gpu)
-		if 'blip' in self.args.backbone:
-			self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(None)
-			if self.args.use_cap_loss:
-				print("We will use caption loss and two optimizers")
-				self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
-						weight_decay=self.args.warmup_ratio) # Using same weight decay as an example
-			self.lr_scheduler = None
+		
 		if self.verbose:
 			print(f'It took {time() - start:.1f}s')
 		self.iftrain = train
@@ -119,11 +113,11 @@ class Trainer(TrainerBase):
 	def build_data_info_path(self, scenario_dir, tsk):
 		# Define the suffix based on M
 		suffix_mapping = {
-		    5000: '_5k',
-		    1000: '_1k',
-		    2500: '_2k',
-		    10000: '_10k',
-		    20000: '_20k'
+			5000: '_5.0k',
+			1000: '_1.0k',
+			2500: '_2.5k',
+			10000: '_10k',
+			20000: '_20k'
 		}
 
 		# Determine the balance type
@@ -138,7 +132,7 @@ class Trainer(TrainerBase):
 		suffix = suffix_mapping.get(self.M, '')
 
 		# Construct the file path
-		file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
+		file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}_{self.args.sequence}.json"
 		data_info_path = os.path.join(scenario_dir, file_name)
 
 		return data_info_path
@@ -176,6 +170,8 @@ class Trainer(TrainerBase):
 			task_idx = task2id[task]
 			print('======================== Now is task "', task, '" ========================')
 			self.task_iftrain[task] = 1
+			dataset_lengths = None
+			all_predictions = None
 			# Memory
 			if args.memory:
 				if task_idx > 0:
@@ -202,17 +198,46 @@ class Trainer(TrainerBase):
 							All_examplar.extend(self.Examplar_set[task_set][:each_memory])
 					else:
 						# Construct the task-specific file path
-						# if self.args.replay_strategy == 'static':
-						print("Welcome to the static rehearsal module")
-						tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
-						scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
-						data_info_path = self.build_data_info_path(scenario_dir, tsk)
-						print(f"Load synthetic replay data from {data_info_path}")
-						# Load the exemplar data from the file
-						with open(data_info_path, 'r') as file:
-							All_examplar = json.load(file)
-						# elif self.args.replay_type == "dynamic":
-						# 	pass
+						if self.args.replay_strategy == 'static':
+							print("Welcome to the static rehearsal module")
+							tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
+							scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
+							data_info_path = self.build_data_info_path(scenario_dir, tsk)
+							print(f"Load synthetic replay data from {data_info_path}")
+							# Load the exemplar data from the file
+							with open(data_info_path, 'r') as file:
+								All_examplar = json.load(file)
+							new_data = []
+							for datum in All_examplar:
+								new_datum = {}
+								for k,v in datum.items():
+									if k.startswith("Q_"):
+										new_datum['Q'] = datum[k]
+									elif k.startswith("A_"):
+										new_datum['A'] = datum[k]
+									else:
+										new_datum[k] = datum[k]
+								new_data.append(new_datum)
+							All_examplar = new_data
+						else:
+							print("Welcome to the Dynamic rehearsal module")
+							tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
+							scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
+							data_info_path = os.path.join(scenario_dir, f'fcl_mmf_{tsk}_train_cluster_full.json')
+							print(f"Load Full replay data from {data_info_path}")
+							with open(data_info_path, 'r') as file:
+								task_specific_examplar = json.load(file)
+							All_examplar = []
+							dataset_lengths = []
+							all_predictions = {}
+							for  k, v in task_specific_examplar.items():
+								All_examplar += v
+								dataset_lengths.append(len(v))
+								predictions = []
+								for item in v:
+									predictions.append(item['cluster_prediction'])
+								all_predictions[k] = predictions
+
 					print(f"Size of Repay data is {len(All_examplar)}")
 				else:
 					All_examplar = []
@@ -235,7 +260,7 @@ class Trainer(TrainerBase):
 				workers=args.num_workers,
 				task=task,
 			)
-
+			num_iters = len(train_loader)
 			self.task_total_num[task_idx] = total_num_Q
 
 			print(f'Building val loader at GPU {args.gpu}')
@@ -256,19 +281,22 @@ class Trainer(TrainerBase):
 				task=task,
 			)
 			self.test_loader_dict_all[task] = test_loader
-
+			
 			print("#Loading ", task)
 			memory_loader = get_loader_memory(
 				args,
 				All_examplar,
 				split=args.train, scenario=args.scenario, batch_size=32,
-				workers=args.num_workers,
+				workers=args.num_workers, num_iters=num_iters, 
+				lengths=dataset_lengths, all_predictions=all_predictions, 
+				task=task
 			)  #G1-G5
 
 			# if self.verbose:
 			loss_meter = LossMeter()
 			loss_meter_mem = LossMeter()
 			loss_meter_ques = LossMeter()
+			loss_meter_reg = LossMeter()
 			best_valid = 0.
 			best_epoch = 0
 
@@ -281,8 +309,12 @@ class Trainer(TrainerBase):
 					total_train_num = 2 * len(self.train_loader.dataset)
 				else:
 					total_train_num = len(self.train_loader.dataset)
-				if 't5' in self.args.backbone:
-					self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(total_train_num)
+				# if 't5' in self.args.backbone:
+			self.optim, self.lr_scheduler = self.create_optimizer_and_scheduler(total_train_num)
+			if self.args.use_cap_loss:
+				print("We will use caption loss and two optimizers")
+				self.optim_question = torch.optim.AdamW(params=self.model.language_projection_questions.parameters(),lr=1e-4,  
+				weight_decay=self.args.warmup_ratio)
 			self.scaler = None
 			start_epoch = 0
 			# score_dict = self.evaluate(self.val_loader_cate, task)
@@ -327,6 +359,10 @@ class Trainer(TrainerBase):
 					else:
 						loss_meter_mem.update(-1)
 					
+					if 'reg_loss' in results:
+						loss_meter_reg.update(results['reg_loss'].item())
+						desc_str += f' | Loss_reg {loss_meter_reg.val:4f}'
+
 					if args.show_train_progress:
 						pbar.set_description(desc_str)
 						pbar.update(1)
@@ -351,13 +387,16 @@ class Trainer(TrainerBase):
 				else:
 					patience_counter += 1  # Increment the patience counter
 					print(f"No improvement for {patience_counter} epochs.")
-				self.save(task + "_LAST")
-				if patience_counter > patience:
-					print("Early stopping triggered.")
-					print("Saving Last")
-					break  # Break out of the training loop
-		print("Saving Last")
-		self.save(task + "_LAST")
+				# self.save(task + "_LAST")
+				# if patience_counter > patience:
+				# 	print("Early stopping triggered.")
+				# 	print("Saving Last")
+				# 	break  # Break out of the training loop
+		
+			if self.regularizer is not None:
+				self.regularizer.after_training_exp(model=self.model,optimizer=self.optim,dloader=self.train_loader,current_task_id=task_idx)
+			print("Saving Last")
+			self.save(task + "_LAST")
 
 	def train_step(self, batch, epoch_results, task_idx, each_memory):
 		self.optim.zero_grad(set_to_none=True)
@@ -369,7 +408,11 @@ class Trainer(TrainerBase):
 				self.optim_question.zero_grad(set_to_none=True)
 				loss_cap.backward(retain_graph=True)
 				self.optim_question.step()
-	 
+		if self.regularizer is not None:
+			cl_reg = self.regularizer.before_backward(self.model, device=loss.device)
+			loss += cl_reg
+			results['reg_loss'] = cl_reg
+
 		loss.backward()
 		loss = loss.detach()
 		if self.args.clip_grad_norm > 0:
@@ -467,6 +510,9 @@ class Trainer(TrainerBase):
 				acc_dict_all = evaluator.evaluate_raw(quesid2ans)
 				wandb_log_dict = {}
 				wandb_log_dict['Test/overall'] = acc_dict_all['overall']
+				
+				for qtype, score in acc_dict_all['perQuestionType'].items():
+					wandb_log_dict[f'Test_Qtypes/{qtype}'] = score
 				print(test_task, wandb_log_dict)
 				mega_log_dict[task][test_task].append(wandb_log_dict)
 
@@ -479,7 +525,6 @@ class Trainer(TrainerBase):
 			json.dump(mega_log_dict, f, indent=4)
 		with open(f"{pred_dir}/{task}_gt_pred.json", 'w') as f:
 			json.dump(predict_gt_dict, f, indent=4)
-
 	def compile_preds(self, quesid2ans, quesid2gt):
 		gt_pred_pairs = {}
 		for key, val in quesid2ans.items():
@@ -532,8 +577,8 @@ def main_worker(args):
 	args.gpu = 0
 	sg_Ours = Sg_task[args.scenario][args.sequence]
 	if args.train_multi:
-		from src.multi.trainer_multi import TrainerMulti
-		trainer = TrainerMulti(args, sg_Ours, train=True)
+		from src.multi.trainer_multi_sgvqa import SGTrainerMulti
+		trainer = SGTrainerMulti(args, sg_Ours, train=True)
 	else:
 		trainer = Trainer(args, sg_Ours, train=True)
 	if args.now_train:
@@ -559,7 +604,7 @@ def main_worker(args):
 
 	else:
 		if args.checkpoint!='None':
-			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9))
+			task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4))
 			task = Sg_task[args.scenario][args.sequence][task_idx]
 			args.checkpoint = f'{args.output}/{task}_BEST'
 			print(args.checkpoint)
@@ -587,8 +632,14 @@ if __name__ == "__main__":
 	args_dict = vars(args)
 	if not os.path.exists(args.output):
 		os.makedirs(args.output, exist_ok=True)
-	args_output_path = os.path.join(args.output, 'object_BEST.pth')
-	source_path = 'snap/naiveblip_sgvqa_no_ents/object_BEST.pth'
+	starting_ckpt= f'{Sg_task[args.scenario][args.sequence][0]}_BEST.pth'
+	args_output_path = os.path.join(args.output, starting_ckpt)
+	if args.sequence == 'oarlks':
+		source_path = f'snap/naiveblip_sgvqa_no_ents/{starting_ckpt}'
+	elif args.sequence == 'rolak':
+		source_path = f'snap/naiveblip_sgvqa_mem_real_rolak/{starting_ckpt}'
+	elif args.sequence == 'lkora':
+		source_path = f'snap/naiveblip_sgvqa_mem_real_lkora/{starting_ckpt}'
 	if not os.path.exists(args_output_path):
 		try:
 			shutil.copyfile(source_path, args_output_path)

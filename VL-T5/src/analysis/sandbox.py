@@ -1,106 +1,126 @@
-import os
-import json
-import spacy
-from collections import defaultdict
-import sys
-# Load the NLP model just once
-nlp = spacy.load("en_core_web_sm")
+# import torch
+# from torch.utils.data import Dataset, DataLoader, Subset
+# from torch.utils.data import Sampler
+# import numpy as np
+# from itertools import cycle, islice
 
-# Ensure the import path is correctly handled
-sys.path.insert(0, '../')
-from Question_type import All_task
+# class SingleDataset(Dataset):
+#     def __init__(self, dataset):
+#         self.dataset = dataset
 
-# def extract_noun_phrases(sentence):
-#     doc = nlp(sentence)
-#     refined_noun_phrases = []
-#     for chunk in doc.noun_chunks:
-#         # Exclude initial determiner
-#         first_token = chunk[0]
-#         if first_token.dep_ == 'det':
-#             refined_phrase = chunk.text[len(first_token.text)+1:]
-#         else:
-#             refined_phrase = chunk.text
-#         if refined_phrase:
-#             refined_noun_phrases.append(refined_phrase)
-#     return refined_noun_phrases
+#     def __len__(self):
+#         return len(self.dataset)
 
-# def extract_pos(sentence):
-#     doc = nlp(sentence)
-#     parts_of_speech = []
-#     for token in doc:
-#         if token.pos_ in ['NOUN', 'ADJ', 'VERB']:
-#             parts_of_speech.append(token.text)
-#     return parts_of_speech
+#     def __getitem__(self, idx):
+#         return self.dataset[idx]
+
+# class MultiTaskDataset(Dataset):
+#     def __init__(self, datasets):
+#         self.datasets = datasets
+#         self.dataset_lengths = [len(d) for d in datasets]
+#         self.total_length = sum(self.dataset_lengths)
+#         self.combined = []
+#         for dataset in datasets:
+#             self.combined.extend(dataset)
+
+#     def __len__(self):
+#         return self.total_length
+
+#     def __getitem__(self, idx):
+#         return self.combined[idx]
+
+#     @staticmethod
+#     def collate_fn(batch):
+#         data = [item for item in batch]
+#         return torch.stack(data)
 
 # if __name__ == "__main__":
-#     task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
-#     task = Sg_task['function']['oarlks'][task_idx]
-#     source_file = f'../datasets/npy_cap_all/function/fcl_mmf_{task}_train.json'
-#     output_file = source_file.replace('.json', '_updated.json')
-#     print(f"Loading file from {source_file}")
-#     with open(source_file, 'r') as f:
-#         data = json.load(f)
-#     new_data = []
-#     total = len(data)
-#     for i, datum in enumerate(data):
-#         caption = datum['caption'].split('.')[0] + '.'
-#         entities = extract_noun_phrases(caption)
-#         entities.extend(extract_pos(caption))
-#         unique_entities = list(set(entities))
-#         datum['entities'] = unique_entities
-#         datum['caption'] = caption
-#         new_data.append(datum)
-#         if (i + 1) % 1000 == 0:
-#             samples_done = i + 1
-#             samples_left = total - samples_done
-#             print(f'{samples_done} samples processed.')
-#             print(f'Samples left: {samples_left}')
+#     batch_size = 30
+#     dataset1 = [torch.tensor([i]) for i in range(100)]
+#     train_dataset = SingleDataset(dataset1)
+#     train_loader = DataLoader(train_dataset, batch_size=32)
+#     num_iterations = len(train_loader)  # Should be 32
+#     dataset2 = [torch.tensor([i + 100]) for i in range(200)]
+#     dataset3 = [torch.tensor([i + 300]) for i in range(150)]
+#     dataset4 = [torch.tensor([i + 450]) for i in range(150)]
+
+#     datasets = [dataset2, dataset3, dataset4]
+#     combined_dataset = MultiTaskDataset(datasets)
+#     lengths = combined_dataset.dataset_lengths
+#     adjusted_indices = []
+#     for _ in range(num_iterations):
+#         indices = [np.random.choice(length, (batch_size//len(lengths)), replace=False) for length in lengths]
+#         offsets = [sum(lengths[:i]) for i in range(len(lengths))]
+#         for offset, indices_for_dataset in zip(offsets, indices):
+#             adjusted_indices.extend([index + offset for index in indices_for_dataset])
     
-#     with open(output_file, 'w') as f:
-#         json.dump(new_data, f, indent=4)
-#     print(f'Storing new entities @ {output_file}')
+#     subset = Subset(combined_dataset, adjusted_indices)
+#     memory_loader = DataLoader(subset, batch_size=30, shuffle=True)
 
-def count():
-    orig_path = '../datasets/vqa/Partition_Q_V2_no_ents/karpathy_train_q_subcategory.json'
-    with open(orig_path, 'r') as f:
-        data = json.load(f)
-    final_data = []
-    total = 0
-    counts = {}
-    for sub_task in All_task[:9]:
-        counts[sub_task] = 0
-        question_key = f'Q_{sub_task}'
-        answer_key = f'A_q_{sub_task}'
-        sub_data = [datum for datum in data if question_key in datum]
-        
-        for datum in sub_data:
-            total +=1
-            counts[sub_task] +=1
-    print(total)
-    print(counts)
+    
 
-def main():
-    orig_path = '../datasets/vqa/Partition_Q_V2_subset_ST/karpathy_train_q_causal.json'
-    with open(orig_path, 'r') as f:
-        data = json.load(f)
-    final_data = []
-    total = 0
-    for sub_task in All_task[:9]:
-        question_key = f'Q_{sub_task}'
-        answer_key = f'A_cap_{sub_task}'
-        sub_data = [datum for datum in data if question_key in datum and answer_key in datum]
-        new_data = []
-        for datum in sub_data:
-            new_datum = {key: value for key, value in datum.items() if key not in [question_key, answer_key]}
-            question, answer = datum[question_key], datum[answer_key]
-            new_datum['Q'] = question
-            new_datum['A'] = answer.strip()
-            new_data.append(new_datum)
-            total+=1
-        final_data.extend(new_data)
-    print(f"Obtain causal data containing {total} samples")
-    with open('../datasets/vqa/Partition_Q_V2_no_ents/karpathy_train_q_causalunbalanced_new.json', 'w') as f:
-        json.dump(final_data, f)
+#     # Cycle through the memory loader but limit to the same number of iterations
+#     # limited_memory_loader = islice(cycle(memory_loader), num_iterations)
+    
+#     now_loader = zip(train_loader, cycle(memory_loader))
+#     # # Train loop
+#     for now_batch in now_loader:
+#         if len(now_batch) == 2:
+#             batch, mem_batch = now_batch
+#         else:
+#             batch = now_batch
+#             mem_batch = None
+#         import pdb;pdb.set_trace()
 
-if __name__ == "__main__":
-    count()
+
+# import os
+# import sys
+# import numpy as np
+# sys.path.insert(0, '../')
+# from Question_type import qtype_dict, Sg_task
+# import json
+
+# path='../datasets/npy/function/'
+# All_task=Sg_task['function']['oarlks']
+
+# QtypeDict = {}
+# for task in All_task[:-2]:
+#     np_path = os.path.join(path, f'fcl_mmf_{task}_val.npy')
+#     data=np.load(np_path, allow_pickle=True)
+#     for datum in data:
+#         qtype = datum['raw_question_type']
+#         qid = datum['question_id']
+#         if qtype != 'none':
+#             QtypeDict[qid] = str(qtype)
+# with open('../datasets/SGVQA_Qtype_map.json', 'w') as f:
+#     json.dump(QtypeDict, f, indent=4)
+
+
+import os
+import json
+import numpy as np
+np_path=('../datasets/npy/function/fcl_mmf_object_train.npy')
+data = np.load(np_path, allow_pickle=True)
+new_data = []
+for datum in data:
+    new_data.append(datum)
+# new_data=[]
+# for datum in data:
+#     new_datum = {}
+#     for k,v in datum.items():
+#         if k.startswith("Q_"):
+#             new_datum['Q'] = datum[k]
+#         elif k.startswith("A_"):
+#             new_datum['A'] = datum[k]
+#         else:
+#             new_datum[k] = datum[k]
+#     new_data.append(new_datum)
+# import pdb;pdb.set_trace()
+with open('../datasets/npy/function/fcl_mmf_object_train.json', 'w') as f:
+    json.dump(new_data, f, indent=4)
+
+
+
+
+
+
