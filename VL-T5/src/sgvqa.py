@@ -132,7 +132,10 @@ class Trainer(TrainerBase):
 		suffix = suffix_mapping.get(self.M, '')
 
 		# Construct the file path
-		file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}_{self.args.sequence}.json"
+		if self.args.sequence != 'oarlks':
+			file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}_{self.args.sequence}.json"
+		else:
+			file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
 		data_info_path = os.path.join(scenario_dir, file_name)
 
 		return data_info_path
