@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 
 class Prompt(nn.Module):
-    def __init__(self, length=5, embed_dim=1408, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+    def __init__(self, lambda_l2p=0.0, length=5, embed_dim=1408, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                  prompt_key=False, pool_size=None, top_k=5, batchwise_prompt=False, prompt_key_init='uniform',):
         super().__init__()
 
+        self.lambda_l2p = lambda_l2p
         self.length = length
         self.embed_dim = embed_dim
         self.prompt_pool = prompt_pool
@@ -21,7 +22,14 @@ class Prompt(nn.Module):
         key_shape = (pool_size, embed_dim)
         self.prompt_key = nn.Parameter(torch.randn(key_shape))
         nn.init.uniform_(self.prompt_key, -1, 1)
-        
+
+    def before_backward(self, model, **kwargs):
+        reg_loss = - self.reduce_sim * self.lambda_l2p
+        # self.reduce_sim = None
+        return reg_loss
+    
+    def after_training_exp(self):
+        pass
     
     def l2_normalize(self, x, dim=None, epsilon=1e-12):
         """Normalizes a given vector or matrix."""
@@ -85,6 +93,7 @@ class Prompt(nn.Module):
             x_embed_norm = x_embed_norm.unsqueeze(1) # B, 1, C
             sim = batched_key_norm * x_embed_norm # B, top_k, C
             reduce_sim = torch.sum(sim) / x_embed.shape[0] # Scalar
+            self.reduce_sim = reduce_sim
 
             out['reduce_sim'] = reduce_sim
         else:

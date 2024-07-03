@@ -203,6 +203,7 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--blip_model", type=str,default="naiveblip")
     parser.add_argument("--lambda_ewc", type=float, default=0.0)
     parser.add_argument("--lambda_mas", type=float, default=0.0)
+    parser.add_argument("--lambda_l2p", type=float, default=0.0)
     parser.add_argument('--tasks_topk', type=int, default=-1)
     parser.add_argument('--prompt_pool', default=False, type=str2bool)
     parser.add_argument('--pool_size', default=None, type=int)
