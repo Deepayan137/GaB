@@ -18,9 +18,9 @@ All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count',
 Comp_task = ['q_location', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory']
 Sg_task = {
     "function":{
-        "oarlks":["object", "attribute", "relation", "logical", "knowledge", "scenetext"],
+        "oarlks":["object", "attribute", "relation", "logical", "knowledge"],
         "rolak":["relation", "object", "logical", "attribute", "knowledge"],
-        "rklao":["relation", "knowledge", "logical", "attribute", "object"]
+        "lkora":["logical", "knowledge", "object", "relation", "attribute"]
     },
     "scene":{
         "abcdef":["a#ShopAndDining", "b#Workplace", "c#HomeOrHotel", "d#Transportation", "e#SportAndLeisure", "f#Outdoors"]
@@ -222,6 +222,8 @@ with open(os.path.join(path, 'datasets/ImgId_cate_map.json')) as fp:
 
 print("Success to load the QuesId_task_map and QuesId_task_map")
 
+# with open('../datasets/SGVQA_Qtype_map.json') as f:
+#     Sgvqa_QId2Qtype = json.load(f)
 
 _6Q_idx = []
 
