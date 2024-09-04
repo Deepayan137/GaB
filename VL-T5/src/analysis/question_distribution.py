@@ -111,11 +111,6 @@ def sample_by_predicted_labels(train_data, predictions, desired_counts, total_ta
 def cluster_questions(questions, task, batch_size=32, n_clusters=10, train=False, filename=None):
 	# Placeholder for all embeddings
 	all_embeddings = []
-	# if name == 'sgvqa':
-	# 	filename = f'ckpt/kmeans_{task}.pkl'
-	# else:
-	# 	filename = f'ckpt_vqacl/kmeans_{task}.pkl'
-	# Generate embeddings for all questions
 	for i in trange(0, len(questions[task]), batch_size):
 		batch_questions = questions[task][i:i + batch_size]
 		embeddings = [get_embedding(question).squeeze(0) for question in batch_questions]
@@ -169,13 +164,14 @@ def classify_questions(model, questions, task, batch_size=32):
 
 if __name__ == "__main__":
 	strategy = 'cluster'
+	n_clusters = 7
 	print(strategy)
-	sequence = 'lkora'
+	sequence = 'oarlks'
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2))
 	All_task = Sg_task['function'][sequence]
 	task = All_task[task_idx]  # Simplified to only run for the first task
 	cap_root = "../datasets/npy_no_ents/function/"
-	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated_{sequence}.json")
+	json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated.json")
 	print(json_path)
 	created = load_gen_data(task, json_path, All_task)
 	input_dim = 768
@@ -193,11 +189,11 @@ if __name__ == "__main__":
 			predictions_created = classify_questions(classifier, created, sub_task)
 			predictions_test = classify_questions(classifier, test_data, sub_task)
 		elif strategy == 'cluster':
-			filename = f'ckpt/kmeans_{sub_task}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+			filename = f'ckpt/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
 			print(f"hahahaha {filename}")
 			if not os.path.exists(filename):
-				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename)
-			predictions_test = cluster_questions(test_data, sub_task, train=False, filename=filename)
+				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename, n_clusters=n_clusters)
+			predictions_test = cluster_questions(test_data, sub_task, train=False, filename=filename, n_clusters=n_clusters)
 			predictions_created = cluster_questions(created, sub_task, filename=filename)
 		label_counts_created = get_question_dist(predictions_created)
 		label_counts_test = get_question_dist(predictions_test)
@@ -212,7 +208,7 @@ if __name__ == "__main__":
 		print(f'For task {sub_task} the distribution of labels in the test data is {label_counts_test}')
 
 	# Save results based on strategy
-	file_name = f"question_dist_via_clustering_{sequence}.json" if strategy == 'cluster' else f"question_dist_{sequence}.json"
+	file_name = f"question_dist_via_clustering_{n_clusters}.json" if strategy == 'cluster' else f"question_dist_{sequence}.json"
 	with open(os.path.join("metrics", f"sgvqa_{task}_{file_name}"), 'w') as f:
 		json.dump(summary_dict, f, indent=4)
 

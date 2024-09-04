@@ -363,7 +363,7 @@ class Trainer(TrainerBase):
 						loss_meter_mem.update(-1)
 					
 					if 'reg_loss' in results:
-						loss_meter_reg.update(results['reg_loss'].item())
+						loss_meter_reg.update(results['reg_loss'])
 						desc_str += f' | Loss_reg {loss_meter_reg.val:4f}'
 
 					if args.show_train_progress:

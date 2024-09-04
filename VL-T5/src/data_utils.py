@@ -31,29 +31,32 @@ All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count',
 
 def build_data_info_path(args, scenario_dir, tsk):
 		# Define the suffix based on M
-		suffix_mapping = {
-			500: '_0.5k',
-			1000: '_1.0k',
-			5000: '_5.0k',
-			2500: '_2.5k',
-			10000: '_10k',
-			20000: '_20k',
-		}
-
-		# Determine the balance type
-		if args.balance_strategy == "classifier":
-			balance_type = "balanced"
-		elif args.balance_strategy == "cluster":
-			balance_type = "cluster_balanced"
+		if args.method == 'lamol':
+			root= "../datasets/vqa/Partition_Q_V2_lamol/"
+			fname =  f"karpathy_train_{tsk}.json"
+			data_info_path = os.path.join(root, fname)
 		else:
-			balance_type = "unbalanced"
+			suffix_mapping = {
+				1000: '_1.0k',
+				5000: '_5.0k',
+				2500: '_2.5k',
+				10000: '_10k',
+			}
 
-		# Get the appropriate suffix for the given M, default to an empty string if not found
-		suffix = suffix_mapping.get(args.m_size, '')
+			# Determine the balance type
+			if args.balance_strategy == "classifier":
+				balance_type = "balanced"
+			elif args.balance_strategy == "cluster":
+				balance_type = f"cluster_balanced"
+			else:
+				balance_type = "unbalanced"
 
-		# Construct the file path
-		file_name = f"karpathy_train_{tsk}_{balance_type}{suffix}.json"
-		data_info_path = os.path.join(scenario_dir, file_name)
+			# Get the appropriate suffix for the given M, default to an empty string if not found
+			suffix = suffix_mapping.get(args.m_size, '')
+
+			# Construct the file path
+			file_name = f"karpathy_train_{tsk}_{balance_type}{suffix}.json"
+			data_info_path = os.path.join(scenario_dir, file_name)
 
 		return data_info_path
 
@@ -62,13 +65,13 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 	if args.use_gen_data:
 		print("We will use Synthetic QA pairs")
 		task = All_task[task_idx]
-		dest = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		dest = f'../datasets/vqa/Partition_Q_V2_{args.method}/'
 		if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
 			print(f"Synthetic QA pairs not found so creating  for task {task}")
 			create_rehearsal_data(args, task_idx, model, processor, dest)
 		each_memory = args.m_size
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		scenario_dir = '../datasets/vqa/Partition_Q_V2_no_ents/'
+		scenario_dir = dest
 		data_info_path = build_data_info_path(args, scenario_dir, All_task[task_idx])
 	else:
 		print("Loading real QA pairs from previous tasks")
@@ -125,177 +128,59 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 	print("# The size of the cate Memory:", len(All_examplar))
 	return All_examplar, Examplar_set
 
-def post_process_answer(answer):
-	answer = answer.strip().lower()  # Normalize the case to handle mixed cases
-	corrections = {
-		'ele': 'elephant',
-		'gaffe': 'giraffe',
-		'wich': 'sandwich',
-		'sur': 'surfing',
-		'fing': 'surfing',
-		'nis': 'tennis',
-		'ite': 'kite'
-	}
 
-	# Remove 'not' if it is at the end
-	if answer.endswith('not'):
-		answer = answer[:-3].strip()
-
-	# Apply corrections based on exact matches
-	if answer in corrections:
-		return corrections[answer]
-
-	# Handle cases starting with specific substrings
-	if answer.startswith('bee'):
-		return 'frisbee'
-	if answer.startswith('ate') and answer.endswith('boarding'):
-		return 'skateboarding'  # Corrected spelling
-
-	return answer
-
-class QAGen():
-	def __init__(self, args, model, processor):
-		self.args = args
-		self.device = model.device
-		self.savepath = args.output
-		self.model = model
-		self.processor = processor
-		self.model.eval()
-
-	def postprocess(self, sents):
-		sents = sents.split('\n')
-		questions, answers = [], []
-		for sent in sents:
-			if 'Q:' in sent:
-				question, answer = sent.split('?')
-				question = question.split(':')[-1].strip()
-				answer = answer.split(':')[-1].strip()
-				answer = post_process_answer(answer)
-				if question.strip() != "" and answer != "":
-					questions.append(question)
-					answers.append(answer)
-		return questions, answers
-
-	def _load_model(self, task):
-		ckpt = torch.load(os.path.join(self.savepath, f'{task}_LAST.pth'))
-		print(f"question and answer gen projection head loaded for task {task} from {self.savepath}")
-		self.model.language_projection_questions.load_state_dict(ckpt['model']['language_projection_questions'])
-		# self.model.language_projection_answers.load_state_dict(ckpt['model']['language_projection_answers'])
-	
-
-	def generate(self, data, task, batch_size=32):
-		entries = {}
-		count = 0
-		self._load_model(task)
-		# data=data[:32]
-		self.args.use_gen_data = False
-		loader = get_loader_memory(self.args, All_task, data, batch_size=batch_size)
-		for key in loader.keys():
-			loader_cate = loader[key]
-			for i, batch in enumerate(tqdm(loader_cate)):
-				outputs = self.model.get_questions(batch)
-				qids = batch['question_ids']
-				generated_qa = outputs['questions']
-				questions = [f"{item.split('?')[0]}?" for item in generated_qa]
-				cap_answers = [item.split('?')[1] if len(item.split('?')) > 1 else "" for item in generated_qa]
-				sents = [f"Question: {question} Answer:" for question in questions]
-				input_ids = self.processor.tokenizer(text=sents, max_length=20, truncation=True, padding=True, return_tensors='pt')
-				batch['input_ids'] = input_ids['input_ids']
-				outputs = self.model.test_step(batch, task)
-				answers = outputs['pred_ans']
-				try:
-					for i, qid in enumerate(qids):
-						entries[qid] = (questions[i], answers[i], cap_answers[i])
-					count += len(qids)
-				except Exception as e:
-					logging.info(f"Err processing batch {i+1}: {e}")
-					continue
-		print("Setting the old flag back")
-		self.args.use_gen_data = True # restoring the gen data flag, this is only temporary, need to find an efficient soln
-		return entries
-	
-
-	
-	def _load_data(self, task_idx):
-		each_memory = 10000
-		root = "../datasets/vqa/Partition_Q_V2/karpathy_train_"
-		json_path = root + All_task[task_idx] + '.json'
-		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-		with open(json_path, 'r') as f:
-			data_info_dicts = json.load(f)
-		random.shuffle(data_info_dicts)
-		if self.args.use_class_hierarchy:
-			each_memory_for_cate = int(each_memory / len(Category_splits))
-			for cate in Category_splits:
-				num = 0
-				for _d in data_info_dicts:
-					img_id = _d['img_id']
-					if img_id in ImgId_cate_map:
-						if ImgId_cate_map[img_id] in Category_splits[cate]:
-							Examplar_set[cate].append(_d)
-							num += 1
-							if num >= each_memory_for_cate:
-								break
-		return Examplar_set
-
-def create_rehearsal_data(args, task_idx, model, processor, dest):
-	os.makedirs(dest, exist_ok=True)
-	qagen = QAGen(args, model, processor)
+def create_rehearsal_data(args, task_idx, dest_dir):
+	os.makedirs(dest_dir, exist_ok=True)
 	task = All_task[task_idx]
-	Examplar_set = qagen._load_data(task_idx)
-	split = int(5000/task_idx)
-	cat_split = int(split / 5)
+	fname = f"karpathy_train_{task}.json"
+	dest = os.path.join(f'{dest_dir}', fname)
+	path = "../datasets/vqa/Partition_Q_V2/"
+	data = _load_data(path, task_idx)
+	with open(f'metrics/{task}_question_dist.json', 'r') as f:
+		desired_counts = json.load(f)
+
+	from src.analysis.vqacl_gen_ques import _load_data, GenQues
+	savepath = args.savepath
+	gen_ques = GenQues(savepath)
+	mem_size = 20000
+	if args.method == 'lamol':
+		mem_size = 5000
+		gen_ques._load_model(task)
+	data = _load_data(path, task_idx, mem_size)
+	incorrect = 0
 	new_data = []
-	incorrect_samples=0
-	total_samples = 5000
-	limit = 5000// task_idx
-	total=0
+	if task != 'q_causal':
+		partition = int(mem_size/task_idx)
+	else:
+		partition = int(len(data)/task_idx)
 	for i in range(task_idx):
 		qg_task = All_task[i]
+		start_idx = i * partition
+		end_idx = start_idx + partition
 		print(f"Now task is {task} and question generation will be from {qg_task}")
-		start_idx = i * cat_split
-		end_idx = start_idx + cat_split
-		limit_cat = limit // 5
 		print(f"start idx: {start_idx}")
 		print(f"end idx: {end_idx}")
-		print(f"limit is: {limit}")
-		All_examplar = []
-		for key in Examplar_set.keys():
-			All_examplar += Examplar_set[key][start_idx:end_idx]
-		random.shuffle(All_examplar)
-		entries = qagen.generate(All_examplar, qg_task, batch_size=32)
-		# Serialize and save the data
-		count = 0
-		for examplar in All_examplar:
-			qid = examplar['question_id']
-			question, answer, caption_answer = (entry.strip() for entry in entries[qid])
-
-			# Default answers if empty after stripping
-			answer = answer or "not sure"
-			caption_answer = caption_answer or "not sure"
-
-			# Only process further if both answers are not "not sure" and are identical
-			# if answer and caption_answer != "not sure" and caption_answer == answer:
-			examplar[f"Q_{qg_task}"] = question
-			examplar[f"A_self_{qg_task}"] = post_process_answer(answer)
-			examplar[f"A_cap_{qg_task}"] = caption_answer
-			new_data.append(examplar)
-			count += 1
-			total += 1
-	
-			if count >= limit:
-				break
-		
-	with open(f'{dest}/karpathy_train_{task}.json', 'w') as json_file:
-		json.dump(new_data, json_file, indent=4)
-	print("Finished\n")
-	# err_fr = (incorrect_samples/total_samples)*100
-	print(f"Total number of samples:{total}")
-	# print(f"num of correct_samples:{count}")
-	# print(f"% of incorrect_samples:{err_fr}")
-	# print(f"Total samples: {total_samples}")
-
-
+		data_subset = data[start_idx:end_idx]
+		if method != 'lamol':
+			gen_ques._load_model(qg_task)
+		print(f'Number of samples: {len(data_subset)}')
+		for _d in tqdm(data_subset):
+			img_name = f"{_d['img_id']}.jpg"
+			split = "train" if 'train2014' in img_name else 'val'
+			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
+			pairs = gen_ques.inference_qa(img_path, _d, qg_task, desired_counts[qg_task], method, self_answer=False)
+			if pairs != None and len(pairs)>0 :
+				questions, answers = zip(*pairs)
+				if not "" in answers or not "" in answers:
+					_d[f'Q_{qg_task}'] = questions
+					_d[f'A_{qg_task}'] = answers
+					new_data.append(_d)
+			else:
+				incorrect +=1
+	print(f"Incorrect: {incorrect} in {len(data)} samples")
+	with open(dest, 'w') as f:
+		json.dump(new_data, f, indent=4)
+	return new_data
 
 if __name__ == "__main__":
 	task_idx = 1

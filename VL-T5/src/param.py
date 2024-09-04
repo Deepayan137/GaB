@@ -213,12 +213,11 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--use_gen_data', default=False, type=str2bool)
     parser.add_argument('--use_cap_loss', default=False, type=str2bool)
     parser.add_argument('--use_biased_data', default=False, type=str2bool)
-    parser.add_argument('--method', default='no_ents', choices=['ents', 'no_ents', 'qtype'], type=str)
-    # parser.add_argument('--not_balanced', default=False, type=str2bool)
+    parser.add_argument('--method', default='no_ents', choices=['ents', 'no_ents', 'qtype', 'lamol', 'vqg'], type=str)
     parser.add_argument('--replay_strategy', default='static', choices=['static', 'dynamic'], type=str)
     parser.add_argument('--dynamic_sampling', default='random', choices=['random', 'balanced'], type=str)
     parser.add_argument('--balance_strategy', default='classifier', choices=['classifier', 'cluster', 'none'], type=str)
-    
+    parser.add_argument('--n_clusters', default=7, type=int)
     # Parse the arguments.
     if parse:
         args = parser.parse_args()

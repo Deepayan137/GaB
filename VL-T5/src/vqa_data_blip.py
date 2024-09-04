@@ -21,7 +21,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 sys.path.append("..")
-from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_task_list
+from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_task_list, cat_dict_vqacl
 
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
@@ -233,11 +233,22 @@ class VQAFineTuneDataset(Dataset):
                     sent = datum['sent']
                 elif 'question' in datum:
                     sent = datum['question']
-                caption = f"{sent.lower()} {answer.lower()}"
-                cap_ids = self.processor.tokenizer.encode(caption, max_length=20, truncation=True)
+                if self.args.method == 'qtype':
+                    if datum['question_type']:
+                        qtype = cat_dict_vqacl[self.task][f"{datum['question_type']}"]
+                    else:
+                        qtype = 0
+                    caption = f"Question Type:{qtype} Question:{sent} Answer:{answer}"
+                elif self.args.method == 'lamol':
+                    caption = f"{self.task}:{sent.lower()} {answer.lower()}"
+                elif self.args.method == 'vqg':
+                    caption = f"{answer.lower()}:{sent.lower()}"
+                else:
+                    caption = f"{sent.lower()} {answer.lower()}"
+                cap_ids = self.processor.tokenizer.encode(caption, max_length=40, truncation=True)
+                out_dict['caption'] = caption
                 out_dict['cap_ids'] = torch.LongTensor(cap_ids)
                 out_dict['cap_length'] = len(cap_ids)
-                
                 target_ids = self.processor.tokenizer.encode(answer, 
                     max_length=10, truncation=True)
             
@@ -272,6 +283,7 @@ class VQAFineTuneDataset(Dataset):
         sentences = []
         question_ids = []
         answers = []
+        captions = []
         all_answers = []
         img_ids = []
         img_paths = []
@@ -297,6 +309,8 @@ class VQAFineTuneDataset(Dataset):
             question_ids.append(entry['question_id'])
             if 'answer' in entry:
                 answers.append(entry['answer'])
+            if 'caption' in entry:
+                captions.append(entry['caption'])
             if 'all_answers' in entry:
                 all_answers.append(entry['all_answers'])
             if 'score' in entry:
@@ -335,10 +349,12 @@ class VQAFineTuneDataset(Dataset):
         batch_entry['img_id'] = img_ids
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
-        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
-        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        batch_entry['caption'] = captions
+        
+        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
+        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
         return batch_entry
 
 class VQAFineTuneDataset_memory(Dataset):
@@ -1109,64 +1125,28 @@ if __name__ == "__main__":
     from tqdm import *
     coco_Ours = All_task
     args = parse_args()
-    args.backbone = 'instructblip'
-    split = f'test'
+    args.backbone = 'naiveblip'
+    args.method = 'qtype'
+    split = f'train'
     test_memory = False
-    if not test_memory:
-        train_dset = VQADataset(f"karpathy_{split}", True)
-        train_loader, total_num_Q = get_loader(
-                    args,
-                    coco_Ours,
-                    [],
-                    train_dset,
-                    split=f'karpathy_{split}', mode='train', batch_size=32,
-                    distributed=False, gpu=True,
-                    workers=0,
-                    topk=-1,
-                    task='q_location',
-                )
+    
+    train_dset = VQADataset(f"karpathy_{split}", True)
+    train_loader, total_num_Q = get_loader(
+                args,
+                coco_Ours,
+                [],
+                train_dset,
+                split=f'karpathy_{split}', mode='train', batch_size=32,
+                distributed=False, gpu=True,
+                workers=0,
+                topk=-1,
+                task='q_location',
+            )
 
-        train_loader_cate = train_loader['G1']
-        total_train_num = len(train_loader_cate.dataset)
-        now_loader = train_loader_cate
-        for now_batch in tqdm(now_loader):
-            import pdb; pdb.set_trace()
-            continue
-    else:
-        task_list = []
-        for task in coco_Ours:
-            task_list.append(task)
-        latest_task_idx = 0
-        M = 1000
-        Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
-        for task_idx, task in enumerate(task_list[latest_task_idx+1:]):
-            print('======================== Now is task "', task, '" ========================')
-            if task_idx != latest_task_idx + 1:
-                each_memory = int(M)
-                data_info_path = ('../datasets/vqa/Partition_Q_V2/karpathy_train_' + f'{task_list[task_idx - 1]}.json')
-                with open(data_info_path) as f:
-                    data_info_dicts = json.load(f)
-                random.shuffle(data_info_dicts)  # shuffle
-                each_memory_for_cate = int(each_memory / len(Category_splits))
-                for cate in Category_splits:
-                    num = 0
-                    Examplar_set[cate].append([])
-                    for _d in data_info_dicts:
-                        img_id = _d['img_id']
-                        if img_id in ImgId_cate_map:
-                            if ImgId_cate_map[img_id] in Category_splits[cate]:
-                                Examplar_set[cate][task_idx - 1].append(_d)
-                                num += 1
-                                if num >= each_memory_for_cate:
-                                    break
-                print('Load from Partition_Q_v3......')
-                for cate in Category_splits:
-                    for i in range(task_idx):
-                        Examplar_set[cate][i] = Examplar_set[cate][i][: each_memory_for_cate]
-
-                All_examplar = []
-                for E_set in Examplar_set:
-                    for task_set in Examplar_set[E_set]:
-                        All_examplar += task_set
-                print("# The size of the cate Memory:", len(All_examplar))
-
+    train_loader_cate = train_loader['G1']
+    total_train_num = len(train_loader_cate.dataset)
+    now_loader = train_loader_cate
+    for now_batch in tqdm(now_loader):
+        import pdb; pdb.set_trace()
+        continue
+    

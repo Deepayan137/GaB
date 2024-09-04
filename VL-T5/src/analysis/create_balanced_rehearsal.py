@@ -65,12 +65,16 @@ def unbalanced_data(data, task, split, All_task):
 	return final_data
 
 
-def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequence='oarlks'):
+def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequence='oarlks', n_clusters=10):
 	if name == 'sgvqa':
-		with open(f'metrics/sgvqa_{task}_question_dist_via_clustering_{sequence}.json', 'r') as f:
+		if sequence == 'oarlks':
+			fpath = f'metrics/sgvqa_{task}_question_dist_via_clustering_{n_clusters}.json'
+		else:
+			fpath = f'metrics/sgvqa_{task}_question_dist_via_clustering_{sequence}.json'
+		with open(fpath, 'r') as f:
 			desired_counts = json.load(f)
 	else:
-		with open(f'metrics/{task}_question_dist_via_clustering.json', 'r') as f:
+		with open(f'metrics/{task}_question_dist_via_clustering_{n_clusters}.json', 'r') as f:
 			desired_counts = json.load(f)
 	# Define the root path for the captions
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -110,12 +114,15 @@ def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequ
 				new_datum[f'A_{sub_task}'] = ' '.join(answer.split(' ')[:2])
 				sub_task_questions[sub_task].append(question)
 				new_data.append(new_datum)
-		filename = f'ckpt_vqacl/kmeans_{sub_task}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
-		predictions = cluster_questions(sub_task_questions, sub_task, train=False, filename=filename)
+		if name == 'sgvqa':
+			filename = f'ckpt/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+		else:
+			filename = f'ckpt_vqacl/kmeans_{sub_task}_{n_clusters}.pkl'
+		predictions = cluster_questions(sub_task_questions, sub_task, n_clusters=n_clusters, train=False, filename=filename)
 		new_data = sample_by_predicted_labels(new_data, predictions, desired_task_counts, total_target=split)
 		new_questions={}
 		new_questions[sub_task] = [datum[f'Q_{sub_task}'] for datum in new_data]
-		ques_preds = cluster_questions(new_questions, sub_task, filename=filename)
+		ques_preds = cluster_questions(new_questions, sub_task, filename=filename, n_clusters=n_clusters)
 		label_stats = get_question_dist(ques_preds)
 		print(label_stats)
 		final_data.extend(new_data)
@@ -184,9 +191,10 @@ def balanced_data_via_classifier(data, task, split, All_task, name='sgvqa'):
 
 if __name__ == "__main__":
 	strategy = 'cluster'
-	mem_sizes = [2500, 5000]
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
-	sequence = 'lkora'
+	n_clusters = 3
+	mem_sizes = [1000, 5000]
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2)) 
+	sequence = 'oarlks'
 	All_task = Sg_task['function'][sequence]
 	for mem_size in mem_sizes:
 		print(f"Memory Size is {mem_size}")
@@ -195,24 +203,31 @@ if __name__ == "__main__":
 		method = 'no_ents'
 		split = int(mem_size / task_idx)
 		cap_root = f"../datasets/npy_{method}/function/"
-		json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated_{sequence}.json")
+		if sequence == 'oarlks':
+			json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated.json")
+		else:
+			json_path = os.path.join(cap_root, f"fcl_mmf_{task}_train_updated_{sequence}.json")
 
 		print(f"Loading data from {json_path}")
 		with open(json_path, 'r') as file:
 			data = json.load(file)
+		# import pdb;pdb.set_trace()
 		print(f"Number of data points present in original data: {len(data)}")
 		if strategy == 'classifer':
 			rehearsal_data = balanced_data_via_classifier(data, task, split, All_task)
 			balance_status = 'balanced'
 		elif strategy == 'cluster':
-			rehearsal_data = balanced_data_via_clustering(data, task, split, All_task, sequence=sequence)
-			balance_status = 'cluster_balanced'
+			rehearsal_data = balanced_data_via_clustering(data, task, split, All_task, sequence=sequence, n_clusters=n_clusters)
+			balance_status = f'cluster_balanced_{n_clusters}'
 		else:
 			rehearsal_data = unbalanced_data(data, task, split, All_task)
 			balance_status = 'unbalanced'
 		print(f"No. of samples present in {task} data file: {len(rehearsal_data)}")
 		savepath_suffix = f"{float(mem_size/1000)}k" if mem_size != 10000 else "10k"
-		savepath = json_path.replace(f'_updated_{sequence}.json', f'_{balance_status}_{savepath_suffix}_{sequence}.json')
+		if sequence == 'oarlks':
+			savepath = json_path.replace(f'_updated.json', f'_{balance_status}_{savepath_suffix}.json')
+		else:
+			savepath = json_path.replace(f'_updated_{sequence}.json', f'_{balance_status}_{savepath_suffix}_{sequence}.json')
 		
 		print(f"Saving data @ {savepath}")
 		with open(savepath, 'w') as f:

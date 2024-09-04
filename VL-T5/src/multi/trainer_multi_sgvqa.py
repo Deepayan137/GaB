@@ -56,7 +56,7 @@ class SGTrainerMulti(Trainer):
 		start_epoch = 0
 		
 		patience_counter = 0
-		patience = 2
+		patience = 5
 		task_idx = 0
 		for epoch in range(start_epoch, self.args.epochs):
 			self.model.train()
@@ -104,7 +104,22 @@ class SGTrainerMulti(Trainer):
 				log_str = ''
 				# log_str += "\nEpoch %d: Valid Raw %0.2f Topk %0.2f" % (epoch, valid_score_raw, valid_score)
 				log_str += "\nEpoch %d: Valid Raw %0.2f" % (epoch, valid_score_raw)
-			self.save(task + f"{epoch}")
+				print(log_str)
+			
+			if valid_score_raw > valid_score_raw_best:
+				valid_score_raw_best = valid_score_raw
+				patience_counter = 0  # Reset the patience counter
+				print("Saving Best")
+				self.save(task + "_BEST")
+			else:
+				patience_counter += 1  # Increment the patience counter
+				print(f"No improvement for {patience_counter} epochs.")
+				# self.save(task + "_LAST")
+			if patience_counter > patience:
+				print("Early stopping triggered.")
+				print("Saving Last")
+				break  # Break out of the training loop
+			# self.save(task + f"{epoch}")
 			
 			if self.args.distributed:
 				dist.barrier()

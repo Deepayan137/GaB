@@ -109,6 +109,7 @@ class Trainer(TrainerBase):
             if args.blip_model == "naiveblip":
                 model_class = NaiveBLIP2
             elif args.blip_model == 'vqaclblip':
+                model_kwargs = {}
                 model_class = BLIP2Prototype
 
 
@@ -441,7 +442,10 @@ class Trainer(TrainerBase):
             if self.args.distributed:
                 results = self.model.module.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
             else:
-                results = self.model.train_step(batch, task_idx)
+                if self.args.blip_model == 'vqaclblip':
+                    results = self.model.train_step(batch, task_idx, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num)
+                else:
+                    results = self.model.train_step(batch, task_idx)
         #, self.args.proto_alpha, self.args.proto_beta, each_memory, self.task_total_num
         loss = results['loss']
         lambda_Q = self.args.lambda_Q

@@ -1,5 +1,6 @@
 import json
 import os
+import numpy as np
 import spacy
 import torch
 import random
@@ -181,20 +182,24 @@ class GenQues:
 		return [(question.strip(), answer.strip())]
 
 if __name__ == "__main__":
-	path = "../datasets/npy_no_ents/function"
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4)) 
+	path = "../datasets/npy/function"
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
 	method = 'no_ents'
 	sequence = 'rolak'
 	task = Sg_task['function'][sequence][task_idx]
 	split = int(20000/task_idx)
-	fname = f"fcl_mmf_{task}_train_updated.json"
+	fname = f"fcl_mmf_{task}_train.npy"
 	source = os.path.join(path, fname)
 	dest_dir = f'../datasets/npy_{method}/function'
 	os.makedirs(dest_dir, exist_ok=True)
-	dest_fname = fname if sequence == 'oarlks' else fname.replace('_updated', f'_updated_{sequence}')
+	# dest_fname = fname if sequence == 'oarlks' else fname.replace('_updated', f'_updated_{sequence}')
+	dest_fname = f"fcl_mmf_{task}_train_updated.json"
+	if sequence != 'oarlks':
+		dest_fname = dest_fname.replace('_updated', f'_updated_{sequence}')
 	dest = os.path.join(f'{dest_dir}', dest_fname)
-	with open(source, 'r') as f:
-		data = json.load(f)
+	# with open(source, 'r') as f:
+	# 	data = json.load(f)
+	data = np.load(source, allow_pickle=True)
 	# savepath = f'snap/naiveblip_sgvqa_{method}/'  
 	savepath = 'snap/naiveblip_sgvqa_no_ents/'
 	gen_ques = GenQues(savepath)

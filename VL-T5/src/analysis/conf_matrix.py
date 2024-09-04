@@ -30,8 +30,8 @@ def plot_conf_mat(file_path, destination):
 	plt.close()
 
 if __name__ == "__main__":
-	savepath = "metrics"
-	destination = os.path.join("metrics", "conf_matrix")
+	savepath = "acc_metrics"
+	destination = os.path.join("acc_metrics", "conf_matrix")
 	os.makedirs(destination, exist_ok=True)
 	file_names = os.listdir(savepath)
 	f = lambda x: os.path.join(savepath, x)

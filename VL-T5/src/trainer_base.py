@@ -256,6 +256,7 @@ class TrainerBase(object):
 			pprint(results)
 
 	def init_weights(self, seed=0, ifseed=False):
+		import pdb;pdb.set_trace()
 		if ifseed:
 		# seed = 668
 			torch.manual_seed(seed)
@@ -313,10 +314,15 @@ class TrainerBase(object):
 				'language_projection':actual_model.language_projection.state_dict(),
 				'qformer':actual_model.qformer.state_dict()}
 			elif self.args.ft_layers == 'query_tokens':
-				state_dict_to_save["model"] = {
-				'query_tokens': actual_model.query_tokens.data, 
-				'language_projection_questions':actual_model.language_projection_questions.state_dict(),
-				'language_projection_answers':actual_model.language_projection_answers.state_dict()}
+				if self.args.blip_model == 'vqaclblip':
+					state_dict_to_save["model"] = {
+					'query_tokens': actual_model.query_tokens.data,			
+					'language_projection':actual_model.language_projection.state_dict()}
+				else:
+					state_dict_to_save["model"] = {
+					'query_tokens': actual_model.query_tokens.data, 
+					'language_projection_questions':actual_model.language_projection_questions.state_dict(),
+					'language_projection_answers':actual_model.language_projection_answers.state_dict()}
 				if hasattr(actual_model.vision_model, 'prompt'):
 					state_dict_to_save['model'].update(actual_model.vision_model.prompt.state_dict())
 				
@@ -348,14 +354,8 @@ class TrainerBase(object):
 		# Access model depending on whether it's distributed or not
 		actual_model = self.model.module if self.args.distributed else self.model
 		if 'blip' in self.args.backbone:
-			# Load different components based on ft_layers
-			if self.args.ft_layers == 'full':
-				actual_model.qformer.load_state_dict(checkpoint["model"]["qformer"], strict=False)
+			if self.args.ft_layers == 'query_tokens' and self.args.blip_model=='naiveblip':
 				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-				actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-			elif self.args.ft_layers == 'query_tokens':
-				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-				# actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
 				if 'language_projection_answers' in checkpoint['model'] and 'language_projection_questions' in checkpoint['model']:
 					actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
 					actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
@@ -366,17 +366,19 @@ class TrainerBase(object):
 					print('Loading prompts weights')
 					prompt_dict = {'prompt': checkpoint['model']['prompt'], 'prompt_key': checkpoint['model']['prompt_key']}
 					actual_model.vision_model.prompt.load_state_dict(prompt_dict)
-				
-				if 'regularizer' in checkpoint:
-					self.regularizer.load_state_dict(checkpoint['regularizer'])
+			else:
+				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+				actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
+				# if 'regularizer' in checkpoint:
+				# 	self.regularizer.load_state_dict(checkpoint['regularizer'])
 			if self.args.ft_layers =='last layer':
 				num_layers = len(actual_model.qformer.encoder.layer)
 				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
 				actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
 				actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-			if self.args.train_multi:
-				print("Loading optimizer from previous ckpt")
-				self.optim.load_state_dict(checkpoint["optimizer"])
+			# if self.args.train_multi:
+			# 	print("Loading optimizer from previous ckpt")
+			# 	self.optim.load_state_dict(checkpoint["optimizer"])
 		elif 't5' in self.args.backbone:
 			actual_model.load_state_dict(checkpoint["model"])
 		if self.args.blip_model != "naiveblip":

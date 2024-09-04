@@ -40,23 +40,24 @@ def _load_data(root, task_idx):
 	return All_data
 
 if __name__ == "__main__":
-	strategy = 'classifer'
-	mem_sizes = [10000]
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
+	strategy = 'none'
+	mem_sizes = [5000]
+	n_clusters = 7
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9)) 
 	for mem_size in mem_sizes:
 		print(f"Memory Size is {mem_size}") 
 		task = All_task[task_idx]
 		method = 'no_ents'
 		split = int(mem_size / task_idx)
-		root = "../datasets/vqa/Partition_Q_V2_no_ents/karpathy_train_"
+		root = f"../datasets/vqa/Partition_Q_V2_no_ents_past/karpathy_train_"
 		data = _load_data(root, task_idx)
 		print(f"Number of data points present in original data {len(data)}")
 		if strategy == 'classifer':
 			rehearsal_data = balanced_data_via_classifier(data, task, split, All_task, name='vqacl')
 			balance_status = 'balanced'
 		elif strategy == 'cluster':
-			rehearsal_data = balanced_data_via_clustering(data, task, split, All_task, name='vqacl')
-			balance_status = 'cluster_balanced'
+			rehearsal_data = balanced_data_via_clustering(data, task, split, All_task, name='vqacl', n_clusters=n_clusters)
+			balance_status = f'cluster_balanced_{n_clusters}'
 		else:
 			rehearsal_data = unbalanced_data(data, task, split, All_task)
 			balance_status = 'unbalanced'
