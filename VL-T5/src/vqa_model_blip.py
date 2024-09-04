@@ -104,10 +104,11 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		num_answers=None, 
 		label2ans=None, 
 		pool_size=None,
+        lambda_l2p=0.0,
 		prompt_pool=False,
 		use_cap_loss=False,
 		ft_layers='query_tokens',):
-		super().__init__(config, pool_size, prompt_pool)
+		super().__init__(config, pool_size, prompt_pool, lambda_l2p)
 		from transformers import AutoProcessor
 		self.use_cap_loss = use_cap_loss
 		self.num_answers = num_answers

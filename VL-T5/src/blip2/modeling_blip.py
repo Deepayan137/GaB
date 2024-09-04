@@ -15,7 +15,7 @@ from transformers.modeling_outputs import (BaseModelOutputWithPastAndCrossAttent
 from src.blip2.prompt import Prompt
 
 class Blip2VisionModelOurs(Blip2VisionModel):
-    def __init__(self, config,
+    def __init__(self, config, lambda_l2p=0.0,
         prompt_length=5, embedding_key='mean', prompt_init='cls', 
         prompt_pool=False, pool_size=None, use_prompt_mask=False, top_k=5, 
         batchwise_prompt=True, prompt_key_init='uniform',prompt_key=False):
@@ -24,9 +24,12 @@ class Blip2VisionModelOurs(Blip2VisionModel):
         self.use_prompt_mask = use_prompt_mask
         embed_dim=config.hidden_size
         if pool_size is not None and prompt_pool:
-            self.prompt = Prompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
+            self.prompt = Prompt(lambda_l2p=lambda_l2p, length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
                     prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
                     prompt_key_init=prompt_key_init,)
+    
+    def get_regularizer(self):
+        return self.prompt
 
     def forward(self, 
         pixel_values=None, 
@@ -347,19 +350,23 @@ class Blip2QFormerModelOurs(Blip2QFormerModel):
             cross_attentions=encoder_outputs.cross_attentions,
         )
 class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
-    def __init__(self, config, pool_size=None, prompt_pool=False):
+    def __init__(self, config, pool_size=None, prompt_pool=False, lambda_l2p=0.0):
         super().__init__(config)
         self.vision_model = Blip2VisionModelOurs(
             config.vision_config, 
             pool_size=pool_size, 
-            prompt_pool=prompt_pool)
+            prompt_pool=prompt_pool,
+            lambda_l2p=lambda_l2p)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
         self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, 
             config.text_config.hidden_size)
 
         self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
             config.text_config.hidden_size)
-
+    
+    def get_regularizer(self):
+        return self.vision_model.get_regularizer()
+    
     # @torch.no_grad()  # Ensure that gradients are not calculated for this operation
     def get_features(self, pixel_values):
         """

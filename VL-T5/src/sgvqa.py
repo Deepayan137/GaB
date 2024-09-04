@@ -60,9 +60,9 @@ class Trainer(TrainerBase):
 		from vqa_model import VLT5VQA
 		from vqa_model_blip import NaiveBLIP2
 		model_kwargs = {'ft_layers':args.ft_layers, 
-		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss}
+		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss, 'lambda_l2p':args.lambda_l2p}
 		if args.prompt_pool:
-			print("Activating Learning to Prompt")
+			print(f"Activating Learning to Prompt with lambda_l2p {args.lambda_l2p}")
 		# model_kwargs = {}
 		if 't5' in args.backbone:
 			model_class = VLT5VQA
@@ -75,6 +75,10 @@ class Trainer(TrainerBase):
 		self.regularizer = None
 		if isinstance(self.model, tuple):
 			self.model, self.regularizer = self.model
+
+		if args.prompt_pool:
+			self.regularizer = self.model.get_regularizer()
+			
 		if 't5' in self.args.tokenizer:
 			self.model.resize_token_embeddings(self.tokenizer.vocab_size)
 		elif 'bart' in self.args.tokenizer:
