@@ -47,7 +47,7 @@ def build_data_info_path(args, scenario_dir, tsk):
 			if args.balance_strategy == "classifier":
 				balance_type = "balanced"
 			elif args.balance_strategy == "cluster":
-				balance_type = f"cluster_balanced"
+				balance_type = f"cluster_balanced_{args.n_clusters}"
 			else:
 				balance_type = "unbalanced"
 
@@ -68,7 +68,7 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 		dest = f'../datasets/vqa/Partition_Q_V2_{args.method}/'
 		if not os.path.exists(f'{dest}/karpathy_train_{task}.json'):
 			print(f"Synthetic QA pairs not found so creating  for task {task}")
-			create_rehearsal_data(args, task_idx, model, processor, dest)
+			create_rehearsal_data(args, task_idx, dest, model=model, processor=processor, savepath=None)
 		each_memory = args.m_size
 		Examplar_set = {'G1':[], 'G2':[], 'G3':[], 'G4':[], 'G5':[]}
 		scenario_dir = dest
@@ -129,23 +129,22 @@ def get_memory_data(args, task_idx, each_memory, Examplar_set, model, processor)
 	return All_examplar, Examplar_set
 
 
-def create_rehearsal_data(args, task_idx, dest_dir):
+def create_rehearsal_data(args, task_idx, dest_dir, savepath=None, model=None, processor=None):
 	os.makedirs(dest_dir, exist_ok=True)
 	task = All_task[task_idx]
 	fname = f"karpathy_train_{task}.json"
 	dest = os.path.join(f'{dest_dir}', fname)
 	path = "../datasets/vqa/Partition_Q_V2/"
-	data = _load_data(path, task_idx)
+	from src.analysis.vqacl_gen_ques import _load_data, GenQues
 	with open(f'metrics/{task}_question_dist.json', 'r') as f:
 		desired_counts = json.load(f)
-
-	from src.analysis.vqacl_gen_ques import _load_data, GenQues
-	savepath = args.savepath
-	gen_ques = GenQues(savepath)
+	
+	gen_ques = GenQues(savepath=args.output, model=model, processor=processor)
 	mem_size = 20000
 	if args.method == 'lamol':
 		mem_size = 5000
-		gen_ques._load_model(task)
+		lamol_task = All_task[task_idx - 1]
+		gen_ques._load_model(lamol_task)
 	data = _load_data(path, task_idx, mem_size)
 	incorrect = 0
 	new_data = []
@@ -161,74 +160,79 @@ def create_rehearsal_data(args, task_idx, dest_dir):
 		print(f"start idx: {start_idx}")
 		print(f"end idx: {end_idx}")
 		data_subset = data[start_idx:end_idx]
-		if method != 'lamol':
+		if args.method != 'lamol':
 			gen_ques._load_model(qg_task)
 		print(f'Number of samples: {len(data_subset)}')
 		for _d in tqdm(data_subset):
 			img_name = f"{_d['img_id']}.jpg"
 			split = "train" if 'train2014' in img_name else 'val'
 			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
-			pairs = gen_ques.inference_qa(img_path, _d, qg_task, desired_counts[qg_task], method, self_answer=False)
+			pairs = gen_ques.inference_qa(img_path, _d, qg_task, desired_counts[qg_task], args.method, self_answer=False)
 			if pairs != None and len(pairs)>0 :
 				questions, answers = zip(*pairs)
 				if not "" in answers or not "" in answers:
-					_d[f'Q_{qg_task}'] = questions
-					_d[f'A_{qg_task}'] = answers
+					_d[f'Q_{qg_task}'] = questions[0]
+					_d[f'A_{qg_task}'] = answers[0]
 					new_data.append(_d)
 			else:
 				incorrect +=1
 	print(f"Incorrect: {incorrect} in {len(data)} samples")
 	with open(dest, 'w') as f:
 		json.dump(new_data, f, indent=4)
-	return new_data
-
+	
 if __name__ == "__main__":
-	task_idx = 1
-	backbone = "Salesforce/blip2-opt-2.7b"
 	from src.param import parse_args
 	args = parse_args()
-	from transformers import Blip2Config
-	config = Blip2Config.from_pretrained(backbone)
-	from transformers import AutoProcessor
-	from src.vqa_model_blip import NaiveBLIP2
-	model = NaiveBLIP2.from_pretrained(backbone, config=config)
-	processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
-	savepath = 'snap/naiveblip_qa_qtoken/'
-	args.backbone = backbone
-	args.self_train = True
-	dest = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/datasets/vqa/Partition_Q_V2_st/"
-	os.makedirs(dest, exist_ok=True)
-	if task_idx > 0 :
-		qagen = QAGen(args, model, processor, savepath)
-		task = All_task[task_idx]
-		Examplar_set = qagen._load_data(task_idx)
-		split = int(5000/task_idx)
-		cat_split = int(split / 5)
-		new_data = []
-		incorrect_samples=0
-		total_samples = 5000
-		for i in range(task_idx):
-			qg_task = All_task[i]
-			print(f"Now task is {task} and question generation will be from {qg_task}")
-			start_idx = i * cat_split
-			end_idx = start_idx + cat_split
-			print(f"start idx: {start_idx}")
-			print(f"end idx: {end_idx}")
-			All_examplar = []
-			for key in Examplar_set.keys():
-				All_examplar += Examplar_set[key][start_idx:end_idx]
-			entries = qagen.generate(All_examplar, qg_task, batch_size=32)
-			# Serialize and save the data
-			for _d in All_examplar:
-				qid = _d['question_id']
-				(question, answer) = entries[qid]
-				if len(question) > 0 and len(answer) > 0:
-					_d[f"Q_{qg_task}"] = question
-					answer = post_process_answer(answer)
-					_d[f"A_{qg_task}"] = answer
-					new_data.append(_d)
-				else:
-					incorrect_samples +=1
+	task_idx = 2
+	args.method = 'lamol'
+	args.output = 'snap/naiveblip_cl_lamol/'
+	dest_dir = f'../datasets/vqa/Partition_Q_V2_{args.method}/'
+	create_rehearsal_data(args, task_idx, dest_dir, savepath=args.output)
+	# backbone = "Salesforce/blip2-opt-2.7b"
+	# from src.param import parse_args
+	# args = parse_args()
+	# from transformers import Blip2Config
+	# config = Blip2Config.from_pretrained(backbone)
+	# from transformers import AutoProcessor
+	# from src.vqa_model_blip import NaiveBLIP2
+	# model = NaiveBLIP2.from_pretrained(backbone, config=config)
+	# processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+	# savepath = 'snap/naiveblip_qa_qtoken/'
+	# args.backbone = backbone
+	# args.self_train = True
+	# dest = "/leonardo_scratch/fast/IscrC_CLRT-VLM/VQACL/datasets/vqa/Partition_Q_V2_st/"
+	# os.makedirs(dest, exist_ok=True)
+	# if task_idx > 0 :
+	# 	qagen = QAGen(args, model, processor, savepath)
+	# 	task = All_task[task_idx]
+	# 	Examplar_set = qagen._load_data(task_idx)
+	# 	split = int(5000/task_idx)
+	# 	cat_split = int(split / 5)
+	# 	new_data = []
+	# 	incorrect_samples=0
+	# 	total_samples = 5000
+	# 	for i in range(task_idx):
+	# 		qg_task = All_task[i]
+	# 		print(f"Now task is {task} and question generation will be from {qg_task}")
+	# 		start_idx = i * cat_split
+	# 		end_idx = start_idx + cat_split
+	# 		print(f"start idx: {start_idx}")
+	# 		print(f"end idx: {end_idx}")
+	# 		All_examplar = []
+	# 		for key in Examplar_set.keys():
+	# 			All_examplar += Examplar_set[key][start_idx:end_idx]
+	# 		entries = qagen.generate(All_examplar, qg_task, batch_size=32)
+	# 		# Serialize and save the data
+	# 		for _d in All_examplar:
+	# 			qid = _d['question_id']
+	# 			(question, answer) = entries[qid]
+	# 			if len(question) > 0 and len(answer) > 0:
+	# 				_d[f"Q_{qg_task}"] = question
+	# 				answer = post_process_answer(answer)
+	# 				_d[f"A_{qg_task}"] = answer
+	# 				new_data.append(_d)
+	# 			else:
+	# 				incorrect_samples +=1
 		
 		# with open(f'{dest}/karpathy_train_{task}.json', 'w') as json_file:
 		# 	json.dump(new_data, json_file, indent=4)

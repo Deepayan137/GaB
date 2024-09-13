@@ -3,9 +3,9 @@ import json
 
 import pandas as pd
 
-# All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
+All_task = ['q_recognition','q_location', 'q_judge', 'q_commonsense', 'q_count', 'q_action', 'q_color', 'q_type', 'q_subcategory', 'q_causal']
 # All_task = ['object', 'attribute', 'relation', 'logical', 'knowledge']
-All_task = ['relation', 'object', 'logical', 'attribute', 'knowledge']
+# All_task = ['relation', 'object', 'logical', 'attribute', 'knowledge']
 # All_task = ['q_location']
 class Analysis(object):
 	def __init__(self, paths):
@@ -32,7 +32,7 @@ class Analysis(object):
 		return with_causal
 
 	def parse_acc_json(self, json_path):
-		task = '_'.join(os.path.basename(json_path).split('_')[:1])
+		task = '_'.join(os.path.basename(json_path).split('_')[:2])
 		with open(json_path, 'r') as f:
 			data = json.load(f)
 		acc_dict = {}
@@ -55,7 +55,7 @@ class Analysis(object):
 
 if __name__ == "__main__":
 	savepath = "snap"
-	model_names = ['naiveblip_sgvqa_seq_ft_rolak', 'naiveblip_sgvqa_cluster_balanced_rolak_5k', 'naiveblip_sgvqa_unbalanced_rolak_5k', 'naiveblip_sgvqa_mem_real_rolak_5k']
+	model_names = ['naiveblip_cl_proto']
 	# model_names = os.listdir(savepath)
 	f = lambda x: os.path.join(savepath, x)
 	model_paths = list(map(f, model_names))

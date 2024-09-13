@@ -522,7 +522,6 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         # concatenate query embeddings with prompt embeddings
         inputs_embeds = self.get_input_embeddings()(input_ids)
         inputs_embeds = torch.cat([language_model_inputs, inputs_embeds.to(language_model_inputs.device)], dim=1)
-
         # add image_embeds length to max_length, so that the final max_length in counted only on token embeds
         # -1 is to account for the prepended BOS after `generate.`
         # TODO (joao, raushan): refactor `generate` to avoid these operations with VLMs

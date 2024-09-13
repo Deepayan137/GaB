@@ -180,34 +180,63 @@
 #     process_tasks(root, task, mem_sizes, strategy)
 
 
-import pandas as pd
-from io import StringIO
+# import pandas as pd
+# from io import StringIO
 
-data = """
-,q_recognition,q_location,q_judge,q_commonsense,q_count,q_action,q_color,q_type,q_subcategory,q_causal
-q_recognition,34.75,28.2,7.72,8.36,0.96,21.06,2.04,21.89,31.85,27.28
-q_location,20.54,26.68,2.41,3.16,0.25,5.81,0.39,16.76,28.17,21.55
-q_judge,48.23,37.91,84.69,81.81,7.04,84.44,0.21,24.47,80.15,61.21
-q_commonsense,56.27,44.7,79.94,81.21,5.5,79.5,0.28,14.17,75.26,66.51
-q_count,19.64,3.1,0.49,1.71,27.33,1.23,0.05,11.98,40.37,32.9
-q_action,41.03,33.45,58.1,57.27,11.9,66.72,0.43,23.06,67.11,52.51
-q_color,53.29,43.32,12.79,61.92,11.37,28.65,68.68,63.21,64.89,63.25
-q_type,31.64,26.2,84.36,53.07,0.3,20.47,4.18,27.68,39.2,27.7
-q_subcategory,41.35,34.49,36.28,37.07,2.48,41.52,0.84,20.92,53.12,45.71
-q_causal,3.91,4.21,13.55,14.01,0.46,1.52,0.0,1.27,4.72,14.31
-"""
+# data = """
+# ,q_recognition,q_location,q_judge,q_commonsense,q_count,q_action,q_color,q_type,q_subcategory,q_causal
+# q_recognition,34.75,28.2,7.72,8.36,0.96,21.06,2.04,21.89,31.85,27.28
+# q_location,20.54,26.68,2.41,3.16,0.25,5.81,0.39,16.76,28.17,21.55
+# q_judge,48.23,37.91,84.69,81.81,7.04,84.44,0.21,24.47,80.15,61.21
+# q_commonsense,56.27,44.7,79.94,81.21,5.5,79.5,0.28,14.17,75.26,66.51
+# q_count,19.64,3.1,0.49,1.71,27.33,1.23,0.05,11.98,40.37,32.9
+# q_action,41.03,33.45,58.1,57.27,11.9,66.72,0.43,23.06,67.11,52.51
+# q_color,53.29,43.32,12.79,61.92,11.37,28.65,68.68,63.21,64.89,63.25
+# q_type,31.64,26.2,84.36,53.07,0.3,20.47,4.18,27.68,39.2,27.7
+# q_subcategory,41.35,34.49,36.28,37.07,2.48,41.52,0.84,20.92,53.12,45.71
+# q_causal,3.91,4.21,13.55,14.01,0.46,1.52,0.0,1.27,4.72,14.31
+# """
 
-# Using StringIO to simulate reading from a file
-csv_data = StringIO(data)
+# # Using StringIO to simulate reading from a file
+# csv_data = StringIO(data)
 
-# Read the CSV data
-df = pd.read_csv(csv_data, index_col=0)
+# # Read the CSV data
+# df = pd.read_csv(csv_data, index_col=0)
 
-# Transpose the DataFrame
-transposed_df = df.transpose()
+# # Transpose the DataFrame
+# transposed_df = df.transpose()
 
-# Set the tasks as the index (since the tasks are in the column names of the original CSV)
-transposed_df.index.name = 'task'
-transposed_df.to_csv('acc_metrics/naiveblip_seq_ft.csv')
-# Display the transposed DataFrame
-print(transposed_df)
+# # Set the tasks as the index (since the tasks are in the column names of the original CSV)
+# transposed_df.index.name = 'task'
+# transposed_df.to_csv('acc_metrics/naiveblip_seq_ft.csv')
+# # Display the transposed DataFrame
+# print(transposed_df)
+
+
+class NaiveBLIP2(NaiveBlip2VQACL):
+	def __init__(self, config):
+		super().__init__(config, pool_size, prompt_pool, lambda_l2p)
+		from transformers import AutoProcessor
+		self.use_cap_loss = use_cap_loss
+		self.num_answers = num_answers
+		self.label2ans = label2ans
+		self.bce_loss = nn.BCEWithLogitsLoss()
+		self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+		for name, param in self.vision_model.named_parameters():
+			param.requires_grad = False
+		print("Freeze vision encoder")
+		self.vision_model = self.vision_model.eval()
+		num_layers = len(self.qformer.encoder.layer)
+		# Freeze all parameters of the query transformer by default
+		for param in self.qformer.parameters():
+			param.requires_grad = False
+
+		if ft_layers == 'query_tokens':
+			print("Unfreeze only the query tokens")
+			self.query_tokens.requires_grad = True
+			self.language_projection_answers.requires_grad = True
+			self.language_projection_questions.requires_grad = True
+		
+		print("Freeze Language model")
+		for name, param in self.language_model.named_parameters():
+			param.requires_grad = False

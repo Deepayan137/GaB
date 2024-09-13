@@ -7,14 +7,11 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH -t 12:00:00
-#SBATCH --array=1-4
-#SBATCH -o logs/balanced_rehearsal_%a.out  # %A for job ID, %a for array task ID
+#SBATCH --array=0-4
+#SBATCH -o logs/gen_ques_%a.out  # %A for job ID, %a for array task ID
 # # Load Python environment or any other dependencies
 # module load python/3.8  # Example module, adjust as per your setup
 
 # # The name of experiment
-# python -m src.analysis.question_distribution
-python -m src.analysis.create_balanced_rehearsal
-# python -m src.analysis.question_distribution_ver2
-# python -m src.analysis.gen_ques
-# python -m src.analysis.gen_ques
+python -m src.analysis.cap_rev
+# python -m src.analysis.make_feat

@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_cl_rebut
-#SBATCH -p boost_usr_prod
+#SBATCH --job-name=train_naiveblip_cl_ablate
+#SBATCH -p long-disi
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
-#SBATCH -t 1-00:00:00
+#SBATCH -t 2-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --mem=128G 
-#SBATCH -o logs/train_naiveblip_clustering_5k_run1_2.out
+#SBATCH --mem=64G 
+#SBATCH -o logs/train_naiveblip_multi.out
 
-name=naiveblip_cl_clustering_5k_run1
+name=naiveblip_multi
 
 output=snap/$name
 
@@ -27,7 +27,7 @@ python src/vqacl.py \
         --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
         --lr 1e-4 \
-        --epochs 3 \
+        --epochs 5 \
         --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2}  \
@@ -44,8 +44,5 @@ python src/vqacl.py \
         --train_from_scratch False \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
-        --use_gen_data True \
-        --balance_strategy 'cluster' \
-        --use_cap_loss False \
-        --memory \
-        --checkpoint 'snap/naiveblip_cl_clustering_5k_run1/q_recognition_LAST'
+        --use_class_hierarchy True \
+        --train_multi True

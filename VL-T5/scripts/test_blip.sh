@@ -1,5 +1,5 @@
 # The name of experiment
-name='naiveblip_cl_gen'
+name='naiveblip_cl_proto'
 
 output=snap/$name
 
@@ -19,4 +19,6 @@ python src/vqacl.py \
         --local-rank 0 \
         --eval_blip True \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_cl_syn_st/q_judge_LAST' \
+        --checkpoint 'snap/naiveblip_cl_proto/q_causal_LAST' \
+        --blip_model "vqaclblip" \
+        --show_train_progress True

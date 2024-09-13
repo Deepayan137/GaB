@@ -1,15 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_cl_rebut
+#SBATCH --job-name=train_naiveblip_sgvqa
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --mem=128G 
-#SBATCH -o logs/train_naiveblip_clustering_5k_run1_2.out
+#SBATCH --mem=64G 
+#SBATCH -o logs/train_naiveblip_ews_1.out
 
-name=naiveblip_cl_clustering_5k_run1
+
+name=naiveblip_sgvqa_ews_1/
 
 output=snap/$name
 
@@ -19,20 +20,20 @@ export PYTHONPATH=$PYTHONPATH:./src
 trap "trap ' ' TERM INT; kill -TERM 0; wait" TERM INT
 
 #call your program here
-python src/vqacl.py \
-        --train karpathy_train \
-        --valid karpathy_val \
-        --test karpathy_test \
+python -m src.sgvqa \
+        --train train \
+        --valid val \
+        --test val \
         --optim adamw \
         --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
         --lr 1e-4 \
-        --epochs 3 \
+        --epochs 15 \
         --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
-        --output $output ${@:2}  \
+        --output $output ${@:2} \
         --num_beams 5 \
-        --batch_size 80 \
+        --batch_size 32 \
         --valid_batch_size 1 \
         --from_scratch \
         --optim 'blip_adamw' \
@@ -40,12 +41,8 @@ python src/vqacl.py \
         --comp_cate G-1 \
         --now_train \
         --local-rank 0 \
-        --show_train_progress False \
-        --train_from_scratch False \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
-        --use_gen_data True \
-        --balance_strategy 'cluster' \
-        --use_cap_loss False \
-        --memory \
-        --checkpoint 'snap/naiveblip_cl_clustering_5k_run1/q_recognition_LAST'
+        --scenario "function" \
+        --sequence "oarlks" \
+        --lambda_ewc 1

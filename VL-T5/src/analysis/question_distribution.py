@@ -167,7 +167,7 @@ if __name__ == "__main__":
 	n_clusters = 7
 	print(strategy)
 	sequence = 'oarlks'
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2))
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
 	All_task = Sg_task['function'][sequence]
 	task = All_task[task_idx]  # Simplified to only run for the first task
 	cap_root = "../datasets/npy_no_ents/function/"
@@ -191,9 +191,12 @@ if __name__ == "__main__":
 		elif strategy == 'cluster':
 			filename = f'ckpt/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
 			print(f"hahahaha {filename}")
+			import time
+			start = time.time()
 			if not os.path.exists(filename):
 				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename, n_clusters=n_clusters)
 			predictions_test = cluster_questions(test_data, sub_task, train=False, filename=filename, n_clusters=n_clusters)
+			print(f"Time taken for clustering:{time.time() - start}")
 			predictions_created = cluster_questions(created, sub_task, filename=filename)
 		label_counts_created = get_question_dist(predictions_created)
 		label_counts_test = get_question_dist(predictions_test)

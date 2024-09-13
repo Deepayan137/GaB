@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import random
+import time
 import wandb
 import torch
 import torch.nn as nn
@@ -60,7 +61,7 @@ class Trainer(TrainerBase):
 		from vqa_model import VLT5VQA
 		from vqa_model_blip import NaiveBLIP2
 		model_kwargs = {'ft_layers':args.ft_layers, 
-		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss, 'lambda_l2p':args.lambda_l2p}
+		'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss}
 		if args.prompt_pool:
 			print(f"Activating Learning to Prompt with lambda_l2p {args.lambda_l2p}")
 		# model_kwargs = {}
@@ -116,31 +117,38 @@ class Trainer(TrainerBase):
 
 	def build_data_info_path(self, scenario_dir, tsk):
 		# Define the suffix based on M
-		suffix_mapping = {
-			5000: '_5.0k',
-			1000: '_1.0k',
-			2500: '_2.5k',
-			10000: '_10k',
-			20000: '_20k'
-		}
-
-		# Determine the balance type
-		if self.args.balance_strategy == "classifier":
-			balance_type = "balanced"
-		elif self.args.balance_strategy == "cluster":
-			balance_type = "cluster_balanced"
+		if args.method == 'lamol':
+			fname = f"fcl_mmf_{tsk}_train.json"
+			data_info_path = os.path.join(scenario_dir, fname)
 		else:
-			balance_type = "unbalanced"
+			suffix_mapping = {
+				5000: '_5.0k',
+				1000: '_1.0k',
+				2500: '_2.5k',
+				10000: '_10k',
+				20000: '_20k'
+			}
 
-		# Get the appropriate suffix for the given M, default to an empty string if not found
-		suffix = suffix_mapping.get(self.M, '')
+			# Determine the balance type
+			if self.args.balance_strategy == "classifier":
+				balance_type = "balanced"
+			elif self.args.balance_strategy == "cluster":
+				if args.n_clusters == 10:
+					balance_type = f"cluster_balanced"
+				else:
+					balance_type = f"cluster_balanced_{args.n_clusters}"
+			else:
+				balance_type = "unbalanced"
 
-		# Construct the file path
-		if self.args.sequence != 'oarlks':
-			file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}_{self.args.sequence}.json"
-		else:
-			file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
-		data_info_path = os.path.join(scenario_dir, file_name)
+			# Get the appropriate suffix for the given M, default to an empty string if not found
+			suffix = suffix_mapping.get(self.M, '')
+
+			# Construct the file path
+			if self.args.sequence != 'oarlks':
+				file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}_{self.args.sequence}.json"
+			else:
+				file_name = f"fcl_mmf_{tsk}_train_{balance_type}{suffix}.json"
+			data_info_path = os.path.join(scenario_dir, file_name)
 
 		return data_info_path
 
@@ -208,8 +216,13 @@ class Trainer(TrainerBase):
 						if self.args.replay_strategy == 'static':
 							print("Welcome to the static rehearsal module")
 							tsk = Sg_task[f'{args.scenario}'][args.sequence][task_idx]
-							scenario_dir = f'../datasets/npy_no_ents/{args.scenario}'
+							scenario_dir = f'../datasets/npy_{args.method}/{args.scenario}'
 							data_info_path = self.build_data_info_path(scenario_dir, tsk)
+							
+							if not os.path.exists(data_info_path):
+								print(f'Replay data does not exist @ {data_info_path}. Creating...')
+								from src.analysis.gen_ques import create_rehearsal_data
+								create_rehearsal_data(args, task_idx, data_info_path, savepath=args.output, model=self.model, processor=self.processor)
 							print(f"Load synthetic replay data from {data_info_path}")
 							# Load the exemplar data from the file
 							with open(data_info_path, 'r') as file:
@@ -329,6 +342,10 @@ class Trainer(TrainerBase):
 			patience_counter = 0
 			patience = 5
 			for epoch in range(start_epoch, self.args.epochs):
+				# from torch.profiler import profile, record_function, ProfilerActivity
+				# with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], with_flops=True) as prof:
+				# 	with record_function("model_inference"):
+				# time_epoch_start = time.time()
 				if self.start_epoch is not None:
 					epoch += self.start_epoch
 				self.model.train()
@@ -359,7 +376,7 @@ class Trainer(TrainerBase):
 						loss_meter_ques.update(results['loss_cap'].item())
 					else:
 						loss_meter_ques.update(-1)
-					desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} |'
+					desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} |Loss Q {loss_meter_ques.val:.4f}'
 					if mem_batch:
 						loss_meter_mem.update(results_mem['loss'].item())
 						desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
@@ -377,6 +394,12 @@ class Trainer(TrainerBase):
 
 				if args.show_train_progress:
 					pbar.close()
+				time_end = time.time()
+				# events = prof.events()
+				# fwbw_flops = sum([int(evt.flops) for evt in events]) 
+				# print("forward + backward flops: ", fwbw_flops)
+				# print(f"Time taken {time_end - time_epoch_start}")
+				# print("$$$$$$$$$$$$$$$$$$$$$$$$$$")
 				print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}, Loss_Ques: {loss_meter_ques.val}")
 				score_dict = self.evaluate(self.val_loader, task)
 				valid_score_raw = score_dict['overall']

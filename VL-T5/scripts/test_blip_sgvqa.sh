@@ -1,5 +1,5 @@
-# The name of experiment
-name='naiveblip_sgvqa_mem_new'
+# The name of experimennt
+name='naiveblip_sgvqa_balanced_cluster_1k/'
 
 output=snap/$name
 
@@ -20,5 +20,5 @@ python src/sgvqa.py \
         --local-rank 0 \
         --eval_blip True \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_sgvqa_mem_new/attribute_BEST' \
+        --checkpoint '' \
         --show_train_progress True \

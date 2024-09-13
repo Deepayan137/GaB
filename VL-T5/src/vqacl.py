@@ -98,7 +98,7 @@ class Trainer(TrainerBase):
         from vqa_model import VLT5VQA
         from vqa_model_blip import NaiveBLIP2, BLIP2Prototype
         model_kwargs = {'ft_layers':args.ft_layers, 
-        'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss, 'lambda_l2p':args.lambda_l2p}
+        'pool_size':args.pool_size, 'prompt_pool':args.prompt_pool, 'use_cap_loss':args.use_cap_loss}
         if args.prompt_pool:
             print(f"Activating Learning to Prompt with lambda_l2p {args.lambda_l2p}")
         # model_kwargs = {}
@@ -336,75 +336,81 @@ class Trainer(TrainerBase):
                     patience_counter = 0
                     patience = 2
                     for epoch in range(start_epoch, self.args.epochs):
-                        if self.start_epoch is not None:
-                            epoch += self.start_epoch
-                        self.model.train()
+                        from torch.profiler import profile, record_function, ProfilerActivity
+                        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], with_flops=True) as prof:
+                            with record_function("model_inference"):
+                                if self.start_epoch is not None:
+                                    epoch += self.start_epoch
+                                self.model.train()
 
-                        if self.args.distributed:
-                            self.train_loader_cate.sampler.set_epoch(epoch)
-                        if args.show_train_progress:
-                            pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
-                        epoch_results = {
-                            'loss': 0.,
-                        }
-
-                        quesid2ans = {}
-
-                        if len(self.memory_loader_cate.dataset) > 0:
-                            now_loader = zip(self.train_loader_cate, cycle(self.memory_loader_cate))
-                            print('Use memory loader')
-                        else:
-                            now_loader = self.train_loader_cate
-
-                        for now_batch in now_loader:
-                            if len(now_batch) == 2:
-                                batch, mem_batch = now_batch
-                            else:
-                                batch = now_batch
-                                mem_batch = None
-                            results, lr = self.train_step(batch, epoch_results, task_idx, each_memory)
-                            if mem_batch:
-                                results_mem, lr = self.train_step(mem_batch, epoch_results, task_idx, each_memory)
-                            
-                            if self.args.distributed:
-                                # Sum the loss across all processes
-                                distributed_loss = 0.
-                                distributed_loss = results['loss'].detach()
-                                dist.all_reduce(distributed_loss, op=dist.ReduceOp.SUM)
-                                distributed_loss = distributed_loss / self.args.world_size  # Average the loss
-                                loss_meter.update(distributed_loss.item())
-                            else:
-                                # Non-distributed, business as usual
-                                loss_meter.update(results['loss'].item())
-                                if 'loss_cap' in results:
-                                    loss_meter_ques.update(results['loss_cap'].item())
-                                else:
-                                    loss_meter_ques.update(-1)
-                            desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} | Loss Ques {loss_meter_ques.val:.4f}'
-                            if mem_batch:
                                 if self.args.distributed:
-                                    distributed_mem_loss = 0.
-                                    distributed_mem_loss = results_mem['loss'].detach()
-                                    dist.all_reduce(distributed_mem_loss, op=dist.ReduceOp.SUM)
-                                    distributed_mem_loss = distributed_mem_loss / self.args.world_size  # Average the loss
-                                    loss_meter_mem.update(distributed_mem_loss.item())
-                                    desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
+                                    self.train_loader_cate.sampler.set_epoch(epoch)
+                                if args.show_train_progress:
+                                    pbar = tqdm(total=len(self.train_loader_cate), ncols=120)
+                                epoch_results = {
+                                    'loss': 0.,
+                                }
+
+                                quesid2ans = {}
+
+                                if len(self.memory_loader_cate.dataset) > 0:
+                                    now_loader = zip(self.train_loader_cate, cycle(self.memory_loader_cate))
+                                    print('Use memory loader')
                                 else:
-                                    loss_meter_mem.update(results_mem['loss'].item())
-                                    desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
-                            else:
-                                loss_meter_mem.update(-1)
+                                    now_loader = self.train_loader_cate
 
-                            if args.show_train_progress:
-                                pbar.set_description(desc_str)
-                                pbar.update(1)
+                                for now_batch in now_loader:
+                                    if len(now_batch) == 2:
+                                        batch, mem_batch = now_batch
+                                    else:
+                                        batch = now_batch
+                                        mem_batch = None
+                                    results, lr = self.train_step(batch, epoch_results, task_idx, each_memory)
+                                    if mem_batch:
+                                        results_mem, lr = self.train_step(mem_batch, epoch_results, task_idx, each_memory)
+                                    
+                                    if self.args.distributed:
+                                        # Sum the loss across all processes
+                                        distributed_loss = 0.
+                                        distributed_loss = results['loss'].detach()
+                                        dist.all_reduce(distributed_loss, op=dist.ReduceOp.SUM)
+                                        distributed_loss = distributed_loss / self.args.world_size  # Average the loss
+                                        loss_meter.update(distributed_loss.item())
+                                    else:
+                                        # Non-distributed, business as usual
+                                        loss_meter.update(results['loss'].item())
+                                        if 'loss_cap' in results:
+                                            loss_meter_ques.update(results['loss_cap'].item())
+                                        else:
+                                            loss_meter_ques.update(-1)
+                                    desc_str = f'Epoch {epoch} | LR {lr:.6f} | Loss {loss_meter.val:.4f} | Loss Ques {loss_meter_ques.val:.4f}'
+                                    if mem_batch:
+                                        if self.args.distributed:
+                                            distributed_mem_loss = 0.
+                                            distributed_mem_loss = results_mem['loss'].detach()
+                                            dist.all_reduce(distributed_mem_loss, op=dist.ReduceOp.SUM)
+                                            distributed_mem_loss = distributed_mem_loss / self.args.world_size  # Average the loss
+                                            loss_meter_mem.update(distributed_mem_loss.item())
+                                            desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
+                                        else:
+                                            loss_meter_mem.update(results_mem['loss'].item())
+                                            desc_str += f' | Loss_mem {loss_meter_mem.val:4f}'
+                                    else:
+                                        loss_meter_mem.update(-1)
 
-                            if self.args.distributed:
-                                dist.barrier()
+                                    if args.show_train_progress:
+                                        pbar.set_description(desc_str)
+                                        pbar.update(1)
 
-                        if args.show_train_progress:
-                            pbar.close()
-                        
+                                    if self.args.distributed:
+                                        dist.barrier()
+
+                                if args.show_train_progress:
+                                    pbar.close()
+                        events = prof.events()
+                        fwbw_flops = sum([int(evt.flops) for evt in events]) 
+                        print("forward + backward flops: ", fwbw_flops)
+                        print("$$$$$$$$$$$$$$$$$$$$$$$$$$")
                         if args.gpu == 0:
                             print(f"Epoch {epoch}| Loss: {loss_meter.val}, Loss_mem: {loss_meter_mem.val}, Loss_Ques: {loss_meter_ques.val}")
                             score_dict = self.evaluate(self.val_loader_cate, task)

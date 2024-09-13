@@ -191,9 +191,9 @@ def balanced_data_via_classifier(data, task, split, All_task, name='sgvqa'):
 
 if __name__ == "__main__":
 	strategy = 'cluster'
-	n_clusters = 3
-	mem_sizes = [1000, 5000]
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 2)) 
+	n_clusters = 7
+	mem_sizes = [5000]
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1)) 
 	sequence = 'oarlks'
 	All_task = Sg_task['function'][sequence]
 	for mem_size in mem_sizes:
@@ -217,7 +217,11 @@ if __name__ == "__main__":
 			rehearsal_data = balanced_data_via_classifier(data, task, split, All_task)
 			balance_status = 'balanced'
 		elif strategy == 'cluster':
+			import time
+			start = time.time()
 			rehearsal_data = balanced_data_via_clustering(data, task, split, All_task, sequence=sequence, n_clusters=n_clusters)
+			print(f"Time taken:{time.time() - start}")
+			import pdb;pdb.set_trace()
 			balance_status = f'cluster_balanced_{n_clusters}'
 		else:
 			rehearsal_data = unbalanced_data(data, task, split, All_task)

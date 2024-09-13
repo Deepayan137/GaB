@@ -31,7 +31,7 @@ def calculate_average_forgetting(data):
     return Incre_avg_forget[-1]
 
 # Load the CSV file
-csv_path = 'acc_metrics/naiveblip_sgvqa_cluster_balanced_rolak_5k.csv'  # Change to your actual CSV file path
+csv_path = 'acc_metrics/naiveblip_cl_proto.csv'  # Change to your actual CSV file path
 data = pd.read_csv(csv_path)
 data = data.iloc[:, 1:]
 # import pdb;pdb.set_trace()

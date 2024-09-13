@@ -1,17 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_sgvqa_mem
+#SBATCH --job-name=train_naiveblip_sgvqa_rebut
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --mem=32G 
-#SBATCH -o logs/train_naiveblip_sgvqa_mem_new6.out
-#SBATCH --signal=B:SIGTERM@300
+#SBATCH --mem=64G 
+#SBATCH -o logs/train_naiveblip_sgvqa_cluster_run1_final.out
 
 
-name=naiveblip_sgvqa_mem_new
+name=naiveblip_sgvqa_cluster_run1
 
 output=snap/$name
 
@@ -21,19 +20,16 @@ export PYTHONPATH=$PYTHONPATH:./src
 trap "trap ' ' TERM INT; kill -TERM 0; wait" TERM INT
 
 #call your program here
-python -m torch.distributed.launch \
-        --nproc_per_node=1 \
-        --master_port 62225 \
-        src/sgvqa.py \
+python -m src.sgvqa \
         --train train \
         --valid val \
         --test val \
         --optim adamw \
         --warmup_ratio 0.05 \
         --clip_grad_norm 5 \
-        --lr 5e-5 \
-        --epochs 15 \
-        --num_workers 0 \
+        --lr 1e-4 \
+        --epochs 10 \
+        --num_workers 4 \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2} \
         --num_beams 5 \
@@ -45,9 +41,14 @@ python -m torch.distributed.launch \
         --comp_cate G-1 \
         --now_train \
         --local-rank 0 \
-        --train_from_scratch False \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
         --scenario "function" \
+        --sequence "oarlks" \
+        --train_from_scratch False \
+        --use_gen_data True \
+        --balance_strategy 'cluster' \
+        --method 'no_ents' \
+        --use_cap_loss False \
         --memory \
-        --checkpoint 'snap/naiveblip_sgvqa_mem_new/object_BEST.pth'
+        --checkpoint 'snap/naiveblip_sgvqa_cluster_run1/logical_BEST' \

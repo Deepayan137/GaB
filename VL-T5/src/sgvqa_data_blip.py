@@ -91,6 +91,8 @@ class SGVQA(Dataset):
 			else:
 				qtype = 0
 			caption = f"Question Type:{qtype} Question:{datum['question']} Answer:{answer}"
+		elif self.args.method == 'lamol':
+			caption = f"{self.task}:{sent.lower()} {answer.lower()}"
 		else:
 			caption = f"{datum['question']} {datum['answer']}"
 		
@@ -208,8 +210,8 @@ class SGVQA_memory(Dataset):
 		else:
 			raise "image path does not exists"
 		if self.args.use_gen_data:
-			sent = datum["Q"]
-			answer = datum ["A"]
+			sent = datum["Q"][0]
+			answer = datum ["A"][0]
 		else:
 			if 'question' in datum:
 				sent = datum['question']
@@ -231,6 +233,13 @@ class SGVQA_memory(Dataset):
 			out_dict['answer'] = datum['answer']
 		if 'answers' in datum:    
 			out_dict['all_answers'] = datum['answers']
+		if self.args.method == 'lamol':
+			caption = f"{sent.lower()} {answer.lower()}"
+			cap_ids = self.processor.tokenizer.encode(caption, max_length=70, truncation=True)
+			out_dict['cap_ids'] = torch.LongTensor(cap_ids)
+			out_dict['cap_length'] = len(cap_ids)
+			out_dict['caption'] = caption
+
 		target_ids = self.processor.tokenizer.encode(out_dict['answer'], 
 			max_length=10, truncation=True)
 		out_dict['target_ids'] = torch.LongTensor(target_ids)
@@ -250,8 +259,11 @@ class SGVQA_memory(Dataset):
 		if 'target_ids' in batch[0]:
 			T_W_L = max(entry['target_length'] for entry in batch)
 			target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
-		
+		if 'cap_ids' in batch[0]:
+			C_W_L = max(entry['cap_length'] for entry in batch)
+			cap_ids = torch.ones(B, C_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 		sentences = []
+		captions= []
 		question_ids = []
 		answers = []
 		all_answers = []
@@ -263,12 +275,16 @@ class SGVQA_memory(Dataset):
 			input_ids[i, :entry['input_length']] = entry['input_ids'][0]
 			if 'target_ids' in entry:
 				target_ids[i, :entry['target_length']] = entry['target_ids']
+			if 'cap_ids' in entry:
+				cap_ids[i, :entry['cap_length']] = entry['cap_ids']
 			if args.use_vision:
 				vis_feats[i] += entry['pixel_values'][0]
 			sentences.append(entry['sent'])
 			question_ids.append(entry['question_id'])
 			if 'answer' in entry:
 				answers.append(entry['answer'])
+			if 'caption' in entry:
+				captions.append(entry['caption'])
 			if 'all_answers' in entry:
 				all_answers.append(entry['all_answers'])
 
@@ -278,13 +294,15 @@ class SGVQA_memory(Dataset):
 		batch_entry['input_ids'] = input_ids
 		if 'target_ids' in batch[0]:
 			batch_entry['target_ids'] = target_ids
-
+		if 'cap_ids' in batch[0]:
+			batch_entry['cap_ids'] = cap_ids
 		if args.use_vision:
 			batch_entry['pixel_values'] = vis_feats
 
 		batch_entry['sent'] = sentences
 		batch_entry['question_ids'] = question_ids
 		batch_entry['answers'] = answers
+		batch_entry['caption'] = captions
 		batch_entry['all_answers'] = all_answers
 		batch_entry['img_id'] = img_ids
 		batch_entry['args'] = args

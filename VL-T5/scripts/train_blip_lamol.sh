@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_cl_rebut
+#SBATCH --job-name=train_naiveblip_lamol
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --mem=128G 
-#SBATCH -o logs/train_naiveblip_clustering_5k_run1_2.out
+#SBATCH --mem=64G 
+#SBATCH -o logs/train_naiveblip_lamol3.out
 
-name=naiveblip_cl_clustering_5k_run1
+name=naiveblip_cl_lamol
 
 output=snap/$name
 
@@ -32,7 +32,7 @@ python src/vqacl.py \
         --backbone 'Salesforce/blip2-opt-2.7b' \
         --output $output ${@:2}  \
         --num_beams 5 \
-        --batch_size 80 \
+        --batch_size 32 \
         --valid_batch_size 1 \
         --from_scratch \
         --optim 'blip_adamw' \
@@ -45,7 +45,8 @@ python src/vqacl.py \
         --ft_layers 'query_tokens' \
         --blip_model "naiveblip" \
         --use_gen_data True \
-        --balance_strategy 'cluster' \
-        --use_cap_loss False \
+        --balance_strategy 'none' \
+        --use_cap_loss True \
+        --method 'lamol' \
         --memory \
-        --checkpoint 'snap/naiveblip_cl_clustering_5k_run1/q_recognition_LAST'
+        --checkpoint 'snap/naiveblip_cl_lamol/q_action_LAST.pth'

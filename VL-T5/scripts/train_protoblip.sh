@@ -1,16 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_cl_rebut
+#SBATCH --job-name=train_protoblip_rebut
 #SBATCH -p boost_usr_prod
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
 #SBATCH -t 1-00:00:00
 #SBATCH --gres gpu:1
-#SBATCH --mem=128G 
-#SBATCH -o logs/train_naiveblip_clustering_5k_run1_2.out
+#SBATCH --mem=64G 
+#SBATCH -o logs/train_protoblip_5k_run1.out
 
-name=naiveblip_cl_clustering_5k_run1
-
+name=naiveblip_cl_proto
 output=snap/$name
 
 # Set environment variables
@@ -43,9 +42,6 @@ python src/vqacl.py \
         --show_train_progress False \
         --train_from_scratch False \
         --ft_layers 'query_tokens' \
-        --blip_model "naiveblip" \
-        --use_gen_data True \
-        --balance_strategy 'cluster' \
-        --use_cap_loss False \
+        --blip_model "vqaclblip" \
         --memory \
-        --checkpoint 'snap/naiveblip_cl_clustering_5k_run1/q_recognition_LAST'
+        --checkpoint 'snap/naiveblip_cl_protoblip_5k_run1/q_commonsense_LAST'

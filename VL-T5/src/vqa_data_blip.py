@@ -555,7 +555,12 @@ class VQAFineTuneDataset_memory(Dataset):
                 out_dict['answer'] = answer
                 out_dict['score'] = score
                 out_dict['all_answers'] = answers
-
+                if self.args.method == 'lamol':
+                    caption = f"{sent.lower()} {answer.lower()}"
+                    cap_ids = self.processor.tokenizer.encode(caption, max_length=40, truncation=True)
+                    out_dict['caption'] = caption
+                    out_dict['cap_ids'] = torch.LongTensor(cap_ids)
+                    out_dict['cap_length'] = len(cap_ids)
                 # eos_token_id = self.processor.tokenizer.eos_token_id
                 target_ids = self.processor.tokenizer.encode(answer, 
                     max_length=10, truncation=True)
@@ -583,6 +588,9 @@ class VQAFineTuneDataset_memory(Dataset):
         if 'target_ids' in batch[0]:
             T_W_L = max(entry['target_length'] for entry in batch)
             target_ids = torch.ones(B, T_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
+        if 'cap_ids' in batch[0]:
+            C_W_L = max(entry['cap_length'] for entry in batch)
+            cap_ids = torch.ones(B, C_W_L, dtype=torch.long) * self.processor.tokenizer.pad_token_id
 
         sentences = []
         question_ids = []
@@ -593,7 +601,7 @@ class VQAFineTuneDataset_memory(Dataset):
         labels = []
         scores = []
         is_topk_optimal = []
-
+        captions = []
         cate_labels = []
         ques_labels = []
         for i, entry in enumerate(batch):
@@ -606,7 +614,8 @@ class VQAFineTuneDataset_memory(Dataset):
 
             if 'target_ids' in entry:
                 target_ids[i, :entry['target_length']] = entry['target_ids']
-
+            if 'cap_ids' in entry:
+                cap_ids[i, :entry['cap_length']] = entry['cap_ids']
             if 'target' in entry:
                 targets[i] += entry['target']
                 # targets.append(entry['target'])
@@ -614,6 +623,8 @@ class VQAFineTuneDataset_memory(Dataset):
             question_ids.append(entry['question_id'])
             if 'answer' in entry:
                 answers.append(entry['answer'])
+            if 'caption' in entry:
+                captions.append(entry['caption'])
             if 'all_answers' in entry:
                 all_answers.append(entry['all_answers'])
             if 'score' in entry:
@@ -637,6 +648,8 @@ class VQAFineTuneDataset_memory(Dataset):
             # word_mask = target_ids != self.processor.tokenizer.pad_token_id
             # target_ids[~word_mask] = -100
             batch_entry['target_ids'] = target_ids
+        if 'cap_ids' in batch[0]:
+            batch_entry['cap_ids'] = cap_ids
         if 'target' in batch[0]:
             # targets = torch.stack(targets, dim=0)
             batch_entry['targets'] = targets
@@ -653,15 +666,14 @@ class VQAFineTuneDataset_memory(Dataset):
         batch_entry['scores'] = torch.FloatTensor(scores)
         batch_entry['labels'] = labels
         batch_entry['img_id'] = img_ids
-
+        batch_entry['caption'] = captions
         batch_entry['args'] = args
         batch_entry['task'] = 'vqa'
+        # cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
+        # batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
 
-        cate_labels_ = torch.LongTensor(cate_labels).unsqueeze(1) #[bs, 1]
-        batch_entry['cate_labels'] = torch.zeros(cate_labels_.shape[0], 80).scatter_(1, cate_labels_, 1 ) # [bs, 80]
-
-        ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
-        batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
+        # ques_labels_ = torch.LongTensor(ques_labels).unsqueeze(1)
+        # batch_entry['ques_labels'] = torch.zeros(cate_labels_.shape[0], len(All_task_list)).scatter_(1, ques_labels_, 1 ) # [bs, 10]
 
         return batch_entry
 
@@ -1126,27 +1138,38 @@ if __name__ == "__main__":
     coco_Ours = All_task
     args = parse_args()
     args.backbone = 'naiveblip'
-    args.method = 'qtype'
+    args.method = 'lamol'
+    args.use_gen_data = True
     split = f'train'
     test_memory = False
     
     train_dset = VQADataset(f"karpathy_{split}", True)
-    train_loader, total_num_Q = get_loader(
-                args,
-                coco_Ours,
-                [],
-                train_dset,
-                split=f'karpathy_{split}', mode='train', batch_size=32,
-                distributed=False, gpu=True,
-                workers=0,
-                topk=-1,
-                task='q_location',
-            )
+    with open('../datasets/vqa/Partition_Q_V2_lamol/karpathy_train_q_location.json', 'r') as f:
+        All_examplar = json.load(f)
+    train_loader = get_loader_memory(
+                    args,
+                    coco_Ours,
+                    All_examplar,
+                    train_dset,
+                    split=args.train, mode='train', batch_size=32, workers=0)
+                
+    # 
+    # train_loader, total_num_Q = get_loader(
+    #             args,
+    #             coco_Ours,
+    #             [],
+    #             train_dset,
+    #             split=f'karpathy_{split}', mode='train', batch_size=32,
+    #             distributed=False, gpu=True,
+    #             workers=0,
+    #             topk=-1,
+    #             task='q_location',
+    #         )
 
     train_loader_cate = train_loader['G1']
     total_train_num = len(train_loader_cate.dataset)
     now_loader = train_loader_cate
     for now_batch in tqdm(now_loader):
-        import pdb; pdb.set_trace()
+        now_batch[0]
         continue
     

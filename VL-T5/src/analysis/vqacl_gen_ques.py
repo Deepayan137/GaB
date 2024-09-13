@@ -15,13 +15,16 @@ nlp = spacy.load("en_core_web_sm")
 args = parse_args()
 
 class GenQues:
-	def __init__(self, savepath):
+	def __init__(self, savepath=None, model=None, processor=None):
 		self.savepath = savepath
-		# self.desired_counts = desired_counts
-		model_name = "Salesforce/blip2-opt-2.7b"
 		self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-		self.processor, self.model = self.initialize_model(model_name)
-
+		if model is not None and processor is not None:
+			self.model, self.processor = model, processor
+		else:
+			model_name = "Salesforce/blip2-opt-2.7b"
+			
+			self.processor, self.model = self.initialize_model(model_name)
+		
 	def initialize_model(self, model_name):
 		processor = AutoProcessor.from_pretrained(model_name)
 		config = Blip2Config.from_pretrained(model_name)
@@ -110,10 +113,16 @@ class GenQues:
 			inputs = self.processor(image, text=prompt,truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
 			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
 			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			import pdb;pdb.set_trace()
+			caption = output['questions'][0]
+			if 'answer:' in caption:
+				try:
+					question, answer = output['questions'][0].split('answer:')
+					return [(f'{task}:'+question.strip()+'?', answer.strip())]
+				except:
+					return None
 			try:
 				question, answer = output['questions'][0].split('?')
-				return [(question.strip(), answer.strip())]
+				return [(f'{task}:'+question.strip(), answer.strip())]
 			except :
 				print("ooops")
 				return None
