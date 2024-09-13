@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=testBLIP_multi
-#SBATCH -p boost_usr_prod
+#SBATCH -p long-disi
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
@@ -8,10 +8,10 @@
 #SBATCH --gres gpu:1
 #SBATCH --mem=32G 
 #SBATCH --array=4
-#SBATCH -o logs/test_blip_sgvqa_cluster_5k_run1%a.out
+#SBATCH -o logs/test_blip_sgvqa_cluster_5k_10_final%a.out
 
 # The name of experiment
-name='naiveblip_sgvqa_cluster_run1'
+name='naiveblip_sgvqa_cluster_balanced_run_10_final'
 
 output=snap/$name
 

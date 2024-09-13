@@ -164,7 +164,7 @@ def classify_questions(model, questions, task, batch_size=32):
 
 if __name__ == "__main__":
 	strategy = 'cluster'
-	n_clusters = 7
+	n_clusters = 10
 	print(strategy)
 	sequence = 'oarlks'
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 1))
@@ -189,14 +189,11 @@ if __name__ == "__main__":
 			predictions_created = classify_questions(classifier, created, sub_task)
 			predictions_test = classify_questions(classifier, test_data, sub_task)
 		elif strategy == 'cluster':
-			filename = f'ckpt/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+			filename = f'ckpt_new/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
 			print(f"hahahaha {filename}")
-			import time
-			start = time.time()
 			if not os.path.exists(filename):
 				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename, n_clusters=n_clusters)
 			predictions_test = cluster_questions(test_data, sub_task, train=False, filename=filename, n_clusters=n_clusters)
-			print(f"Time taken for clustering:{time.time() - start}")
 			predictions_created = cluster_questions(created, sub_task, filename=filename)
 		label_counts_created = get_question_dist(predictions_created)
 		label_counts_test = get_question_dist(predictions_test)

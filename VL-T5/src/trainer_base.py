@@ -47,15 +47,7 @@ class TrainerBase(object):
 	def __init__(self, args, train_loader=None, val_loader=None, test_loader=None, train=True):
 		self.args = args
 
-		# self.train_loader = train_loader
-		# self.val_loader = val_loader
-		# self.test_loader = test_loader
-
 		self.verbose = True
-		if self.args.distributed:
-			if self.args.gpu != 0:
-				self.verbose = False
-
 		if self.args.tokenizer is None:
 			self.args.tokenizer = self.args.backbone
 
@@ -64,18 +56,8 @@ class TrainerBase(object):
 
 	def create_config(self):
 		from transformers import T5Config, BartConfig, Blip2Config, InstructBlipConfig 
-
-		if 't5' in self.args.backbone:
-			config_class = T5Config
-		elif 'bart' in self.args.backbone:
-			config_class = BartConfig
-		elif 'blip' in self.args.backbone:
-			config_class =  Blip2Config
-		else:
-			return None
-
+		config_class =  Blip2Config
 		config = config_class.from_pretrained(self.args.backbone)
-
 		args = self.args
 
 		config.feat_dim = args.feat_dim
@@ -100,12 +82,7 @@ class TrainerBase(object):
 
 
 	def create_model(self, model_class, config=None, **kwargs):
-		print(f'Building Model at GPU {self.args.gpu}')
-
 		model_name = self.args.backbone
-		if 'blip' in model_name:
-			# model_name = "pretrained/models--Salesforce--blip2-opt-2.7b/snapshots/235c75ea3861136b9dd202c6edc6a7ba285c35e3"
-			model_name = "Salesforce/blip2-opt-2.7b"
 		print(f"Loading {model_class}")
 		model = model_class.from_pretrained(model_name,
 			config=config,

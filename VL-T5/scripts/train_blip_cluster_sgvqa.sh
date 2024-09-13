@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=train_naiveblip_sgvqa_rebut
-#SBATCH -p boost_usr_prod
+#SBATCH --job-name=train_naiveblip_sgvqa
+#SBATCH -p long-disi
 #SBATCH --nodes=1               # Number of nodes
 #SBATCH --ntasks=1              # Number of tasks (usually, leave at 1)
 #SBATCH --cpus-per-task=4       # CPU cores per task
-#SBATCH -t 1-00:00:00
+#SBATCH -t 2-00:00:00
 #SBATCH --gres gpu:1
 #SBATCH --mem=64G 
-#SBATCH -o logs/train_naiveblip_sgvqa_cluster_run1_final.out
+#SBATCH -o logs/train_naiveblip_sgvqa_balanced_cluster_5k_run3.out
 
 
-name=naiveblip_sgvqa_cluster_run1
+name=naiveblip_sgvqa_cluster_balanced_run3
 
 output=snap/$name
 
@@ -48,7 +48,6 @@ python -m src.sgvqa \
         --train_from_scratch False \
         --use_gen_data True \
         --balance_strategy 'cluster' \
-        --method 'no_ents' \
         --use_cap_loss False \
         --memory \
-        --checkpoint 'snap/naiveblip_sgvqa_cluster_run1/logical_BEST' \
+        --checkpoint 'snap/naiveblip_sgvqa_cluster_balanced_run3/object_BEST.pth' \

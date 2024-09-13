@@ -59,8 +59,8 @@ if __name__ == "__main__":
 	created = load_gen_data(task)
 	input_dim = 768
 	hidden_dim = 256
-	n_clusters = 15
-	strategy = 'classify'
+	n_clusters = 7
+	strategy = 'cluster'
 	print(f"strategy is {strategy}")
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	summary_dict = {}
@@ -76,7 +76,7 @@ if __name__ == "__main__":
 			predictions_created = classify_questions(classifier, created, sub_task)
 			predictions_train = classify_questions(classifier, test_data, sub_task)
 		elif strategy == 'cluster':
-			filename = f'ckpt_vqacl/kmeans_{sub_task}_{n_clusters}.pkl'
+			filename = f'ckpt_vqacl_new/kmeans_{sub_task}_{n_clusters}.pkl'
 			if not os.path.exists(filename):
 				print(f'No {filename} found')
 				predictions_train = cluster_questions(train_data, sub_task, train=True, filename=filename, n_clusters=n_clusters)

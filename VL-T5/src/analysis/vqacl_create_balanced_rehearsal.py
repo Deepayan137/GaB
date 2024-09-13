@@ -40,7 +40,7 @@ def _load_data(root, task_idx):
 	return All_data
 
 if __name__ == "__main__":
-	strategy = 'none'
+	strategy = 'cluster'
 	mem_sizes = [5000]
 	n_clusters = 7
 	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9)) 
