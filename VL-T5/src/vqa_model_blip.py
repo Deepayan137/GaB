@@ -9,7 +9,8 @@ import time
 from transformers import AutoProcessor
 from src.blip2.modeling_blip import NaiveBlip2VQACL
 from src.blip2.modeling_blip_vqacl import Blip2VQACL
-from src.blip2.modeling_blip_vqg import NaiveBlip2VQG
+# from src.blip2.modeling_blip_vqg import NaiveBlip2VQG
+
 class BLIP2Prototype(Blip2VQACL):
 	def __init__(self, config, num_answers=None, label2ans=None, ft_layers="query_tokens"):
 		super().__init__(config)
@@ -159,7 +160,7 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 		count_module_params(self.vision_model, 'Vision Model')
 		count_module_params(self.qformer, 'Query Transformer (Q-Former)')
 		count_module_params(self.language_model, 'Language Model')
-		count_module_params(self.language_projection_answers, 'Answer Projection Head')
+		count_module_params(self.language_projection, 'Answer Projection Head')
 		count_module_params(self.language_projection_questions, 'Question Projection Head')
 		count_module_params(self.query_tokens, 'Query Tokens')
 
@@ -263,22 +264,22 @@ class NaiveBLIP2(NaiveBlip2VQACL):
 			result['loss_memory_new'] = output['loss_memory_new']
 		return result
 
-class NaiveBlipVQG(NaiveBlip2VQG):
-	def __init__(self, config):
-		super().__init__(config)
-		for name, param in self.vision_model.named_parameters():
-			param.requires_grad = False
-		print("Freeze vision encoder")
-		self.vision_model = self.vision_model.eval()
-		# Freeze all parameters of the query transformer by default
-		for param in self.qformer.parameters():
-			param.requires_grad = False
-		print("Unfreeze only the query tokens")
-		self.query_tokens.requires_grad = True
-		self.language_projection.requires_grad = True
-		print("Freeze Language model")
-		for name, param in self.language_model.named_parameters():
-			param.requires_grad = False
+# class NaiveBlipVQG(NaiveBlip2VQG):
+# 	def __init__(self, config):
+# 		super().__init__(config)
+# 		for name, param in self.vision_model.named_parameters():
+# 			param.requires_grad = False
+# 		print("Freeze vision encoder")
+# 		self.vision_model = self.vision_model.eval()
+# 		# Freeze all parameters of the query transformer by default
+# 		for param in self.qformer.parameters():
+# 			param.requires_grad = False
+# 		print("Unfreeze only the query tokens")
+# 		self.query_tokens.requires_grad = True
+# 		self.language_projection.requires_grad = True
+# 		print("Freeze Language model")
+# 		for name, param in self.language_model.named_parameters():
+# 			param.requires_grad = False
 
 
 
@@ -509,7 +510,6 @@ if __name__ == "__main__":
 			out_text = processor.tokenizer.batch_decode(output, skip_special_tokens=True)
 			preds.append(out_text[0])
 			truths.append(batch['answers'][0])
-			import pdb;pdb.set_trace()
 		# acc = trainer.evaluate(data_loader)  # This line may need correction based on the actual method signature
 		# print(f"Accuracy: {acc}")
 	

@@ -27,15 +27,15 @@ from Question_type import Category_splits, ImgId_cate_map, QuesId_task_map, All_
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
 workspace_dir = project_dir.parent
 dataset_dir = workspace_dir.joinpath('datasets/').resolve()
-coco_dir = dataset_dir.joinpath('COCO')
+coco_dir = '/mhug/mhug-dataset/COCO'
 vg_dir = dataset_dir.joinpath('VG')
-coco_img_dir = coco_dir.joinpath('images/')
-coco_feature_dir = coco_dir.joinpath('features')
+# coco_img_dir = coco_dir.joinpath('images/')
+# coco_feature_dir = coco_dir.joinpath('features')
 vqa_dir = dataset_dir.joinpath('vqa')
 
 
 class VQAFineTuneDataset(Dataset):
-    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', task='q_recognition', cates=[0,1,2]):
+    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, topk=-1, verbose=True, args=None, mode='train', task='q_recognition', cates=[0,1,2]):
         super().__init__()
 
         self.raw_dataset = raw_dataset
@@ -46,7 +46,7 @@ class VQAFineTuneDataset(Dataset):
         # Loading datasets to data
         self.sources = split.split(',')
         if 'blip' in self.args.backbone:
-            self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
+            self.processor = AutoProcessor.from_pretrained("Salesforce/blip2-opt-2.7b", cache_dir='.')
             if args.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
                         [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
@@ -98,8 +98,6 @@ class VQAFineTuneDataset(Dataset):
 
         self.n_gpus = torch.cuda.device_count()
 
-        self.rank = rank
-
         if self.topk > 0:
             data = data[:self.topk]
             if self.verbose:
@@ -114,7 +112,7 @@ class VQAFineTuneDataset(Dataset):
                 else:
                     print("No class hierarchy")
         self.n_boxes = args.n_boxes
-        data_dir = "../datasets/COCO"
+        data_dir = coco_dir
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         # self.instruction = Instructions[task]
         self.task = task
@@ -152,7 +150,6 @@ class VQAFineTuneDataset(Dataset):
             source = self.img_ids_to_source[img_id] # source: val2014
         
             f = f"{os.path.join(self.source_dir[source], img_id)}.jpg"
-            
             if os.path.exists(f):
                 image = Image.open(f).convert("RGB")
             else:
@@ -358,7 +355,7 @@ class VQAFineTuneDataset(Dataset):
         return batch_entry
 
 class VQAFineTuneDataset_memory(Dataset):
-    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, rank=-1, topk=-1, verbose=True, args=None, mode='train', cates=[0,1,2]):
+    def __init__(self, coco_Ours, Examplar_set, split='train', raw_dataset=None, topk=-1, verbose=True, args=None, mode='train', cates=[0,1,2]):
         super().__init__()
 
         self.raw_dataset = raw_dataset
@@ -417,8 +414,6 @@ class VQAFineTuneDataset_memory(Dataset):
 
         self.n_gpus = torch.cuda.device_count()
 
-        self.rank = rank
-
         if self.topk > 0:
             data = data[:self.topk]
             if self.verbose:
@@ -430,7 +425,7 @@ class VQAFineTuneDataset_memory(Dataset):
             print("# all sentences:", len(self.data), 'with Examplers')
 
         self.n_boxes = args.n_boxes
-        data_dir = "../datasets/COCO"
+        data_dir = coco_dir
         # data_dir = "/nfs/data_todi/datasets/COCO2014/"
         self.source_dir = {
             'train': os.path.join(data_dir, f'train2014'),
@@ -680,9 +675,9 @@ class VQAFineTuneDataset_memory(Dataset):
 
 
 def get_loader_memory(args, coco_Ours, Examplar_set, _dset=None, split='karpathy_train', mode='train',
-               batch_size=32, workers=4, distributed=False, gpu=0, topk=-1):
+               batch_size=32, workers=4, topk=-1):
 
-    verbose = (gpu == 0)
+    verbose = True
 
     # _dset = VQADataset(split, verbose, task) # 这里不用改动？
     def cat_loader(CateGroup, cates):
@@ -691,30 +686,23 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset=None, split='karpathy
             Examplar_set,
             split,
             raw_dataset=_dset,
-            rank=gpu,
             topk=topk,
             verbose=verbose,
             args=args,
             mode=mode,
             cates=cates,)
-
-        if distributed:
-            sampler = DistributedSampler(dataset)
-        else:
-            sampler = None
         if mode == 'train':
-            shuffle = len(dataset) > 0 and not sampler
             loader = DataLoader(dataset, 
-                batch_size=batch_size, shuffle=shuffle if (sampler is None) else shuffle,
-                num_workers=workers, pin_memory=True, sampler=sampler,
+                batch_size=batch_size, shuffle=True,
+                num_workers=workers, pin_memory=True, sampler=None,
                 collate_fn=dataset.collate_fn)
         else:
             loader = DataLoader(
                 dataset,
                 batch_size=batch_size,
                 num_workers=workers, pin_memory=True,
-                sampler=sampler,
-                shuffle=None if (sampler is not None) else False,
+                sampler=None,
+                shuffle=False,
                 collate_fn=dataset.collate_fn,
                 drop_last=False)
 
@@ -738,9 +726,9 @@ def get_loader_memory(args, coco_Ours, Examplar_set, _dset=None, split='karpathy
 
 
 def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
-               batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what'):
+               batch_size=32, workers=4, topk=-1, task='what'):
 
-    verbose = (gpu == 0)
+    verbose = True
     # cate_loader = {}
 
     dataset = VQAFineTuneDataset(
@@ -748,7 +736,6 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
         Examplar_set,
         split,
         raw_dataset=_dset,
-        rank=gpu,
         topk=topk,
         verbose=verbose,
         args=args,
@@ -756,23 +743,18 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
         task=task,
         cates=[i for i in range(80)]) # all categories
 
-    if distributed:
-        sampler = DistributedSampler(dataset)
-    else:
-        sampler = None
-
     if mode == 'train':
         loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=None if (sampler is not None) else True,
-            num_workers=workers, pin_memory=True, sampler=sampler,
+            dataset, batch_size=batch_size, shuffle=True,
+            num_workers=workers, pin_memory=True, sampler=None,
             collate_fn=dataset.collate_fn)
     else:
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
             num_workers=workers, pin_memory=True,
-            sampler=sampler,
-            shuffle=None if (sampler is not None) else False,
+            sampler=None,
+            shuffle=False,
             collate_fn=dataset.collate_fn,
             drop_last=False)
 
@@ -785,9 +767,9 @@ def get_loader_test(args, coco_Ours, Examplar_set, _dset, split='karpathy_train'
 
 
 def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mode='train',
-               batch_size=32, workers=4, distributed=False, gpu=0, topk=-1, task='what',):
+               batch_size=32, workers=4, topk=-1, task='what',):
 
-    verbose = (gpu == 0)
+    verbose = True
 
     cate_loader = {}
     def cat_loader(CateGroup, cates):
@@ -797,7 +779,6 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             Examplar_set,
             split,
             raw_dataset=_dset,
-            rank=gpu,
             topk=topk,
             verbose=verbose,
             args=args,
@@ -806,22 +787,19 @@ def get_loader(args, coco_Ours, Examplar_set, _dset, split='karpathy_train', mod
             cates=cates)
         dataset_num = len(dataset)
         # total_num += dataset_num
-        if distributed:
-            sampler = DistributedSampler(dataset)
-        else:
-            sampler = None
+        
         if mode == 'train':
             loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=None if (sampler is not None) else True,
-                num_workers=workers, pin_memory=True, sampler=sampler,
+                dataset, batch_size=batch_size, shuffle=True,
+                num_workers=workers, pin_memory=True, sampler=None,
                 collate_fn=dataset.collate_fn)
         else:
             loader = DataLoader(
                 dataset,
                 batch_size=batch_size,
                 num_workers=workers, pin_memory=True,
-                sampler=sampler,
-                shuffle=None if (sampler is not None) else False,
+                sampler=None,
+                shuffle=False,
                 collate_fn=dataset.collate_fn,
                 drop_last=False)
         if verbose:

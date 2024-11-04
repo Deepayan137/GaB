@@ -360,7 +360,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
         self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, 
             config.text_config.hidden_size)
-
+        # self.language_projection_answers = self.language_projection
         self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
             config.text_config.hidden_size)
     

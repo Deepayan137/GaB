@@ -8,45 +8,27 @@ from pathlib import Path
 from packaging import version
 
 import numpy as np
+import random
 from tqdm import tqdm
 import torch
 import torch.nn as nn
 import logging
 import shutil
+from transformers import AutoProcessor
+from transformers import Blip2Config
 from pprint import pprint
 
 from utils import load_state_dict, LossMeter, set_global_logging_level
 import wandb
 from pprint import pformat
 
-from baselines.ewc import EWC
-from baselines.mas import MAS
 
 proj_dir = Path(__file__).resolve().parent.parent
-
-_use_native_amp = False
-_use_apex = False
-
-# Check if Pytorch version >= 1.6 to switch between Native AMP and Apex
-if version.parse(torch.__version__) < version.parse("1.6"):
-	from transormers.file_utils import is_apex_available
-	if is_apex_available():
-		from apex import amp
-	_use_apex = True
-else:
-	_use_native_amp = True
-	from torch.cuda.amp import autocast
-
-class TerminationError(Exception):
-	"""Error raised when a termination signal is received."""
-
-	def __init__(self):
-		super().__init__("External signal received: forcing termination")
 
 class TrainerBase(object):
 	def __init__(self, args, train_loader=None, val_loader=None, test_loader=None, train=True):
 		self.args = args
-
+		self.set_seed(args.seed)
 		self.verbose = True
 		if self.args.tokenizer is None:
 			self.args.tokenizer = self.args.backbone
@@ -54,8 +36,16 @@ class TrainerBase(object):
 		if not self.verbose:
 			set_global_logging_level(logging.ERROR, ["transformers"])
 
+	def set_seed(self, seed):
+		print(f"The Random seed is {self.args.seed}")
+		random.seed(seed)  # Python random module
+		np.random.seed(seed)  # Numpy module
+		torch.manual_seed(seed)  # PyTorch
+		torch.cuda.manual_seed_all(seed)  # for multi-GPU setups
+		torch.backends.cudnn.deterministic = True  # enforce deterministic algorithm
+		torch.backends.cudnn.benchmark = False  
+
 	def create_config(self):
-		from transformers import T5Config, BartConfig, Blip2Config, InstructBlipConfig 
 		config_class =  Blip2Config
 		config = config_class.from_pretrained(self.args.backbone)
 		args = self.args
@@ -85,161 +75,50 @@ class TrainerBase(object):
 		model_name = self.args.backbone
 		print(f"Loading {model_class}")
 		model = model_class.from_pretrained(model_name,
+			cache_dir='.',
 			config=config,
 			device_map="auto",  
 			trust_remote_code=True,
 			**kwargs
 		)
-		if self.args.lambda_ewc > 0:
-			print(f'Using EWC regularization with lambda {self.args.lambda_ewc}')
-			ewc_module = EWC(ewc_lambda=self.args.lambda_ewc, decay_factor=0.99, uniform_importance=False)
-			return model, ewc_module
-		if self.args.lambda_mas > 0:
-			print(f'Using MAS regularization with lambda {self.args.lambda_mas}')
-			mas_module = MAS(lambda_reg=self.args.lambda_mas, alpha=0.99)
-			return model, mas_module
 		return model
 
 	def create_tokenizer(self, **kwargs):
-		from transformers import T5Tokenizer, BartTokenizer, T5TokenizerFast, BartTokenizerFast, AutoProcessor
-		from tokenization import VLT5Tokenizer, VLT5TokenizerFast
-		if 'blip' in self.args.tokenizer:
-			processor = AutoProcessor.from_pretrained(
-				self.args.backbone,
-				max_length=self.args.max_text_length,
-				do_lower_case=self.args.do_lower_case,
-				**kwargs
-					)
-			tokenizer = processor.tokenizer
-		else:
-			if 't5' in self.args.tokenizer:
-				if self.args.use_vision:
-					# tokenizer_class = VLT5Tokenizer
-					tokenizer_class = VLT5TokenizerFast
-				else:
-					# tokenizer_class = T5Tokenizer
-					tokenizer_class = T5TokenizerFast
-			elif 'bart' in self.args.tokenizer:
-				tokenizer_class = BartTokenizer
-				# tokenizer_class = BartTokenizerFast
-			tokenizer_name = self.args.backbone
-
-			tokenizer = tokenizer_class.from_pretrained(
-				tokenizer_name,
-				max_length=self.args.max_text_length,
-				do_lower_case=self.args.do_lower_case,
-				**kwargs
+		processor = AutoProcessor.from_pretrained(
+			self.args.backbone,
+			max_length=self.args.max_text_length,
+			do_lower_case=self.args.do_lower_case,
+			**kwargs
 				)
-
+		tokenizer = processor.tokenizer
 		return tokenizer
 
 	def create_optimizer_and_scheduler(self, total_train_num):
 		if self.verbose:
 			print('Building Optimizer')
-
 		lr_scheduler = None
+		for name, param in self.model.named_parameters():
+			if param.requires_grad:
+				print(name)
 		if 'blip_adamw' in self.args.optim:
 			from transformers.optimization import AdamW, get_linear_schedule_with_warmup, get_constant_schedule_with_warmup
-			# batch_per_epoch = int(total_train_num / self.args.batch_size) #len(train_loader)
-			# t_total = batch_per_epoch // self.args.gradient_accumulation_steps * self.args.epochs
-			# warmup_ratio = self.args.warmup_ratio
-			# warmup_iters = int(t_total * warmup_ratio)
-			optim = torch.optim.AdamW(params=self.model.parameters(), lr=1e-4, 
+			params = list(self.model.language_projection.parameters()) + list(self.model.language_projection_answers.parameters())
+			optim = torch.optim.AdamW(params=params, lr=self.args.lr, 
 				weight_decay=self.args.warmup_ratio)
-			# nparam = count_parameters(self.model.parameters())
-			# print(f'trainable_parameters = {nparam}')
-			# lr_scheduler = get_constant_schedule_with_warmup(
-			#     optim, warmup_iters)
-		elif 'adamw' in self.args.optim:
-			from transformers.optimization import AdamW, get_linear_schedule_with_warmup, get_constant_schedule_with_warmup
-			batch_per_epoch = int(total_train_num / self.args.batch_size) #len(train_loader)
-			t_total = batch_per_epoch // self.args.gradient_accumulation_steps * self.args.epochs
-			warmup_ratio = self.args.warmup_ratio
-			warmup_iters = int(t_total * warmup_ratio)
-			if self.verbose:
-				print("Batch per epoch: %d" % batch_per_epoch)
-				print("Total Iters: %d" % t_total)
-				print('Warmup ratio:', warmup_ratio)
-				print("Warm up Iters: %d" % warmup_iters)
-
-			no_decay = ["bias", "LayerNorm.weight"]
-
-			if not self.args.freeze:
-				no_decay = ["bias", "LayerNorm.weight"] # ---- here
-				optimizer_grouped_parameters = [
-					{
-						"params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
-						"weight_decay": self.args.weight_decay,
-					},
-					{
-						"params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
-						"weight_decay": 0.0,
-					},
-				]
-			else:
-				print("Freeze the Enc and Dec")
-				for n, p in self.model.named_parameters():
-					p.requires_grad = False
-					# print(n)
-
-				for n, p in self.model.module.shared.named_parameters():
-					p.requires_grad = True
-				# self.model.module.encoder.prefix.requires_grad = True
-				# for n, p in self.model.module.encoder.prompt_pool_module.named_parameters():
-				#     p.requires_grad = True
-
-				optimizer_grouped_parameters = [
-					{
-						"params": [p for n, p in self.model.named_parameters() if
-								   not any(nd in n for nd in no_decay) and p.requires_grad],
-						"weight_decay": self.args.weight_decay,
-					},
-					{
-						"params": [p for n, p in self.model.named_parameters() if
-								   any(nd in n for nd in no_decay) and p.requires_grad],
-						"weight_decay": 0.0,
-					},
-				]
-
-			optim = AdamW(optimizer_grouped_parameters,
-						  lr=self.args.lr, eps=self.args.adam_eps)
-			lr_scheduler = get_constant_schedule_with_warmup(
-				optim, warmup_iters)
-			# lr_scheduler = get_linear_schedule_with_warmup(
-			#     optim, warmup_iters, t_total)
-
 		else:
 			optim = self.args.optimizer(
 				list(self.model.parameters()), self.args.lr)
 
 		return optim, lr_scheduler
 
-	def load_checkpoint(self, ckpt_path):
-		state_dict = load_state_dict(ckpt_path, 'cpu')
-
-		original_keys = list(state_dict.keys())
-		for key in original_keys:
-			if key.startswith("vis_encoder."):
-				new_key = 'encoder.' + key[len("vis_encoder."):]
-				state_dict[new_key] = state_dict.pop(key)
-
-			if key.startswith("model.vis_encoder."):
-				new_key = 'model.encoder.' + key[len("model.vis_encoder."):]
-				state_dict[new_key] = state_dict.pop(key)
-
-		results = self.model.load_state_dict(state_dict, strict=False)
-		if self.verbose:
-			print('Model loaded from ', ckpt_path)
-			pprint(results)
 
 	def init_weights(self, seed=0, ifseed=False):
-		import pdb;pdb.set_trace()
-		if ifseed:
-		# seed = 668
-			torch.manual_seed(seed)
-			torch.cuda.manual_seed_all(seed)
-			np.random.seed(seed)
-			print('random seed', seed)
+		# if ifseed:
+		# # seed = 668
+		# 	torch.manual_seed(seed)
+		# 	torch.cuda.manual_seed_all(seed)
+		# 	np.random.seed(seed)
+		# 	print('random seed', seed)
 
 		def init_bert_weights(module):
 			""" Initialize the weights."""
@@ -264,14 +143,12 @@ class TrainerBase(object):
 	def save(self, name):
 		if not os.path.isdir(self.args.output):
 			os.makedirs(self.args.output, exist_ok=True)
-		# if not self.args.distributed or self.args.local_rank == 0:
 		savepath = os.path.join(self.args.output, "%s.pth" % name)
 		state_dict_to_save = {"optimizer": self.optim.state_dict(), "examplar": self.Examplar_set}
 		# Access model depending on whether it's distributed or not
 		actual_model = self.model.module if self.args.distributed else self.model
-		if self.args.blip_model != "naiveblip":
+		if self.args.blip_model == "vqaclblip":
 			try:
-
 				state_dict_to_save["Q_prototype"] = actual_model.Q_prototype
 				state_dict_to_save["V_prototype"] = actual_model.V_prototype
 				state_dict_to_save["Q_task_mem_proto"] = actual_model.Q_task_mem_proto
@@ -281,41 +158,14 @@ class TrainerBase(object):
 			except Exception as e:
 				print(e)
 				print('save prototype error')
-		if self.args.fp16:
-			state_dict_to_save["scaler"] = self.scaler.state_dict()
-
-		if 'blip' in self.args.backbone:
-			if self.args.ft_layers == 'full':
-				state_dict_to_save["model"] = {
-				'query_tokens': actual_model.query_tokens.data, 
-				'language_projection':actual_model.language_projection.state_dict(),
-				'qformer':actual_model.qformer.state_dict()}
-			elif self.args.ft_layers == 'query_tokens':
-				if self.args.blip_model == 'vqaclblip':
-					state_dict_to_save["model"] = {
-					'query_tokens': actual_model.query_tokens.data,			
-					'language_projection':actual_model.language_projection.state_dict()}
-				else:
-					state_dict_to_save["model"] = {
-					'query_tokens': actual_model.query_tokens.data, 
-					'language_projection_questions':actual_model.language_projection_questions.state_dict(),
-					'language_projection_answers':actual_model.language_projection_answers.state_dict()}
-				if hasattr(actual_model.vision_model, 'prompt'):
-					state_dict_to_save['model'].update(actual_model.vision_model.prompt.state_dict())
-				
-				if self.regularizer is not None:
-					regularizer_state_dict = self.regularizer.get_state_dict()
-					if regularizer_state_dict:
-						state_dict_to_save['regularizer'] = regularizer_state_dict
-			
-			elif self.args.ft_layers == 'last layer':
-				num_layers = len(actual_model.qformer.encoder.layer)
-				state_dict_to_save["model"] = {
-				'query_tokens': actual_model.query_tokens.data,
-				'language_projection':actual_model.language_projection.state_dict(),
-				'last_layer': actual_model.qformer.encoder.layer[num_layers - 1].state_dict()}
-		elif 't5' in self.args.backbone:
-			state_dict_to_save["model"] = actual_model.state_dict()
+			state_dict_to_save["model"] = {
+			'query_tokens': actual_model.query_tokens.data,			
+			'language_projection':actual_model.language_projection.state_dict()}
+		else:
+			state_dict_to_save["model"] = {
+			'query_tokens': actual_model.query_tokens.data, 
+			'language_projection_questions':actual_model.language_projection_questions.state_dict(),
+			'language_projection_answers':actual_model.language_projection_answers.state_dict()}
 		print(f"Saving model at {self.args.ft_layers} parameters @ {savepath}")
 		torch.save(state_dict_to_save, savepath)
 
@@ -324,41 +174,21 @@ class TrainerBase(object):
 	def load(self, path, loc=None):
 		if loc is None and hasattr(self.args, 'gpu'):
 			loc = f'cuda:{self.args.gpu}'
-
 		if not path.endswith('.pth'):
 			path = "%s.pth" % path
 		checkpoint = torch.load(path, map_location=loc)
 		# Access model depending on whether it's distributed or not
 		actual_model = self.model.module if self.args.distributed else self.model
-		if 'blip' in self.args.backbone:
-			if self.args.ft_layers == 'query_tokens' and self.args.blip_model=='naiveblip':
-				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-				if 'language_projection_answers' in checkpoint['model'] and 'language_projection_questions' in checkpoint['model']:
-					actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
-					actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
-				else:
-					print("Loading the original weights")
-					actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection'])
-				if hasattr(actual_model.vision_model, 'prompt'):
-					print('Loading prompts weights')
-					prompt_dict = {'prompt': checkpoint['model']['prompt'], 'prompt_key': checkpoint['model']['prompt_key']}
-					actual_model.vision_model.prompt.load_state_dict(prompt_dict)
+		actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+		if self.args.blip_model=='naiveblip':
+			if 'language_projection_answers' in checkpoint['model'] and 'language_projection_questions' in checkpoint['model']:
+				actual_model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
+				actual_model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
 			else:
-				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
+				print("Loading the original weights")
 				actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-				# if 'regularizer' in checkpoint:
-				# 	self.regularizer.load_state_dict(checkpoint['regularizer'])
-			if self.args.ft_layers =='last layer':
-				num_layers = len(actual_model.qformer.encoder.layer)
-				actual_model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
-				actual_model.qformer.encoder.layer[num_layers - 1].load_state_dict(checkpoint['model']['last_layer'])
-				actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
-			# if self.args.train_multi:
-			# 	print("Loading optimizer from previous ckpt")
-			# 	self.optim.load_state_dict(checkpoint["optimizer"])
-		elif 't5' in self.args.backbone:
-			actual_model.load_state_dict(checkpoint["model"])
-		if self.args.blip_model != "naiveblip":
+		elif self.args == 'vqaclblip':
+			actual_model.language_projection.load_state_dict(checkpoint['model']['language_projection'])
 			if "Q_prototype" in checkpoint.keys():
 				actual_model.Q_prototype = checkpoint["Q_prototype"]
 			if "V_prototype" in checkpoint.keys():
@@ -374,9 +204,6 @@ class TrainerBase(object):
 		if "examplar" in checkpoint.keys():
 			print("Loading Examplar")
 			actual_model.Examplar_set = checkpoint["examplar"]
-		if self.args.fp16:
-			self.scaler.load_state_dict(checkpoint["scaler"])
-
 		if self.verbose:
 			print('Model loaded from ', path)
 
