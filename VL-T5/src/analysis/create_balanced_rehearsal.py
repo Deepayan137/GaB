@@ -65,16 +65,16 @@ def unbalanced_data(data, task, split, All_task):
 	return final_data
 
 
-def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequence='oarlks', n_clusters=10):
+def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequence='oarlks', n_clusters=10, seed=42):
 	if name == 'sgvqa':
 		if sequence == 'oarlks':
-			fpath = f'metrics/sgvqa_{task}_question_dist_via_clustering_{n_clusters}.json'
+			fpath = f'../metrics/sgvqa_{task}_question_dist_via_clustering_{n_clusters}.json'
 		else:
-			fpath = f'metrics/sgvqa_{task}_question_dist_via_clustering_{sequence}.json'
+			fpath = f'../metrics/sgvqa_{task}_question_dist_via_clustering_{sequence}.json'
 		with open(fpath, 'r') as f:
 			desired_counts = json.load(f)
 	else:
-		with open(f'metrics/{task}_question_dist_via_clustering_{n_clusters}.json', 'r') as f:
+		with open(f'../metrics/{task}_question_dist_via_clustering_{n_clusters}.json', 'r') as f:
 			desired_counts = json.load(f)
 	# Define the root path for the captions
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -115,11 +115,11 @@ def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequ
 				sub_task_questions[sub_task].append(question)
 				new_data.append(new_datum)
 		if name == 'sgvqa':
-			filename = f'ckpt_new/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
+			filename = f'../ckpt_sgvqa/kmeans_{sub_task}_{n_clusters}.pkl' if sequence == 'oarlks' else f'ckpt/kmeans_{sub_task}_{sequence}.pkl'
 		else:
-			filename = f'ckpt_vqacl/kmeans_{sub_task}_{n_clusters}.pkl'
+			filename = f'../ckpt_vqacl/kmeans_{sub_task}_{n_clusters}.pkl'
 		predictions = cluster_questions(sub_task_questions, sub_task, n_clusters=n_clusters, train=False, filename=filename)
-		new_data = sample_by_predicted_labels(new_data, predictions, desired_task_counts, total_target=split)
+		new_data = sample_by_predicted_labels(new_data, predictions, desired_task_counts, total_target=split, seed=seed)
 		new_questions={}
 		new_questions[sub_task] = [datum[f'Q_{sub_task}'] for datum in new_data]
 		ques_preds = cluster_questions(new_questions, sub_task, filename=filename, n_clusters=n_clusters)
@@ -131,10 +131,10 @@ def balanced_data_via_clustering(data, task, split, All_task, name='sgvqa', sequ
 
 def balanced_data_via_classifier(data, task, split, All_task, name='sgvqa'):
 	if name=='sgvqa':
-		with open(f'metrics/sgvqa_{task}_question_dist.json', 'r') as f:
+		with open(f'../metrics/sgvqa_{task}_question_dist.json', 'r') as f:
 			desired_counts = json.load(f)
 	else:
-		with open(f'metrics/{task}_question_dist.json', 'r') as f:
+		with open(f'../metrics/{task}_question_dist.json', 'r') as f:
 			desired_counts = json.load(f)
 	# Define the root path for the captions
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'

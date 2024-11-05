@@ -29,9 +29,9 @@ def get_question_dist(predictions):
 
 def _load_classifier_ckpt(classifier, sub_task, name='sgvqa'):
 	if name == 'sgvqa':
-		ckpt_path =f'ckpt/{sub_task}.pth'
+		ckpt_path =f'../ckpt_sgvqa/{sub_task}.pth'
 	else:
-		ckpt_path = f'ckpt_vqacl/{sub_task}.pth'
+		ckpt_path = f'../ckpt_vqacl/{sub_task}.pth'
 	if os.path.exists(ckpt_path):
 		print(f"Loading existsing checkpoint @ {ckpt_path}")
 		ckpt = torch.load(f'{ckpt_path}', map_location=device)

@@ -3,16 +3,17 @@ import os
 import spacy
 import torch
 import random
+import argparse
 from PIL import Image
 from tqdm import tqdm
 from transformers import AutoProcessor, Blip2Config
 from src.vqa_model_blip import NaiveBLIP2
-from src.param import parse_args
+# from src.param import parse_args
 import sys
 sys.path.insert(0, '../')
 from Question_type import *
 nlp = spacy.load("en_core_web_sm")
-args = parse_args()
+# args = parse_args()
 
 class GenQues:
 	def __init__(self, savepath=None, model=None, processor=None):
@@ -26,9 +27,9 @@ class GenQues:
 			self.processor, self.model = self.initialize_model(model_name)
 		
 	def initialize_model(self, model_name):
-		processor = AutoProcessor.from_pretrained(model_name)
+		processor = AutoProcessor.from_pretrained(model_name, cache_dir='.')
 		config = Blip2Config.from_pretrained(model_name)
-		model = NaiveBLIP2.from_pretrained(model_name, config=config).to(self.device)
+		model = NaiveBLIP2.from_pretrained(model_name, config=config, cache_dir='.').to(self.device)
 		return processor, model
 
 	def _load_model(self, task):
@@ -39,54 +40,8 @@ class GenQues:
 			self.model.query_tokens.data.copy_(checkpoint['model']['query_tokens'])
 			self.model.language_projection_questions.load_state_dict(checkpoint['model']['language_projection_questions'])
 			self.model.language_projection_answers.load_state_dict(checkpoint['model']['language_projection_answers'])
-	
-	def _load_answers(self, task):
-		path = f'../datasets/clove_stats/{task}_answer_stats.json'
-		with open(path, 'r') as f:
-			answer_dict = json.load(f)
-
-		# Determine the number of top answers to keep based on the task type
-		if task in ['object', 'attribute']:
-			k = 150
-		elif task == 'relation':
-			k = 20
-		elif task == 'logical':
-			k = 2
 		
-
-		# Sort the dictionary by their frequencies (values) in descending order
-		sorted_answers = sorted(answer_dict, key=answer_dict.get, reverse=True)
-
-		# Store only the top k answers
-		self.answer_list = sorted_answers[:k]
-
-
-	def clean_question(self, output):
-		# Define the keyword to identify the part of the string to remove
-		keyword = "Question:"
-		output = output.strip()
-		# Split the output on the keyword
-		parts = output.split(keyword)
-
-		# Determine the part to use
-		remaining_part = parts[-1] if len(parts) > 1 else output
-
-		# Check if the remaining part starts with 'by' and handle accordingly
-		remaining_part = remaining_part.strip().lower()
-		if remaining_part.startswith('by') or remaining_part.startswith('for'):
-			# Skip the first word
-			return ' '.join(remaining_part.split(' ')[1:])
-		else:
-			# Return the trimmed text if it doesn't start with 'by'
-			return remaining_part
-
-	def _load_qtype_stats(self, task, desired_counts):
-		elements, weights = zip(*desired_counts.items())
-		weights = [w / sum(weights) for w in weights]  # Normalize weights to sum to 1
-		sampled_element = random.choices(elements, weights=weights, k=1)[0]
-		return sampled_element
-		
-	def inference_qa(self, image_path, datum, task, desired_counts, method, max_new_tokens=25, self_answer=False):
+	def inference_qa(self, image_path, datum, task, max_new_tokens=25, self_answer=False):
 		"""
 		Generate question-answer pairs based on the provided image and method.
 		"""
@@ -95,76 +50,17 @@ class GenQues:
 		except Exception as e:
 			print(f"Error opening image: {e}")
 			return []
-		
-		if method == 'qtype':
-			qtype = self._load_qtype_stats(task, desired_counts['balanced'])
-			prompt = f"Question Type:{qtype} Question:"
-			inputs = self.processor(image, text=prompt,truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			try:
-				question, answer = output['questions'][0].split('Answer:')
-				return [(question.strip(), answer.strip())]
-			except :
-				print("ooops")
-				return None
-		elif method == "lamol":
-			prompt = f"{task}:"
-			inputs = self.processor(image, text=prompt,truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			caption = output['questions'][0]
-			if 'answer:' in caption:
-				try:
-					question, answer = output['questions'][0].split('answer:')
-					return [(f'{task}:'+question.strip()+'?', answer.strip())]
-				except:
-					return None
-			try:
-				question, answer = output['questions'][0].split('?')
-				return [(f'{task}:'+question.strip(), answer.strip())]
-			except :
-				print("ooops")
-				return None
-		elif method == "vqg":
-			prompt = f"{answer}:"
-			inputs = self.processor(image, text=prompt,truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"], 'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			try:
-				question, answer = output['questions'][0].split('?')
-				return [(question.strip(), answer.strip())]
-			except :
-				print("ooops")
-				return None
-		else:
-			inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
-			batch = {'pixel_values': inputs["pixel_values"]}
-			output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
-			question, answer = output['questions'][0].split('?')
-			
-			if self_answer:
-				sents = f"Question: {question} Answer:"
-				input_ids = self.processor.tokenizer(text=sents, max_length=40, truncation=True, padding=True, return_tensors='pt')
-				batch['input_ids'] = input_ids['input_ids']
-				outputs = self.model.test_step(batch, task)
-				answer = post_process_answer(outputs['pred_ans'][0])
-
+		inputs = self.processor(image, truncation=True, padding=True, return_tensors="pt", max_length=32).to(self.device)
+		batch = {'pixel_values': inputs["pixel_values"]}
+		output = self.model.get_questions(batch, max_new_tokens=max_new_tokens)
+		question, answer = output['questions'][0].split('?')
+		if self_answer:
+			sents = f"Question: {question} Answer:"
+			input_ids = self.processor.tokenizer(text=sents, max_length=40, truncation=True, padding=True, return_tensors='pt')
+			batch['input_ids'] = input_ids['input_ids']
+			outputs = self.model.test_step(batch, task)
+			answer = post_process_answer(outputs['pred_ans'][0])
 		return [(question.strip()+'?', answer.strip())]
-
-
-	def generate_prompts(self, entities, task, caption=None):
-		"""
-		Generate prompts from entities with optional captions.
-		"""
-		prompts, answers = [], []
-		for entity in set(entities):  # Remove duplicates here
-			if entity in self.answer_list:
-				answer = entity
-				prompt = f"Caption:{caption} Answer:{answer}. Question:" if caption else f"Answer:{answer}. Question:"
-				prompts.append(prompt)
-				answers.append(answer)
-		return prompts, answers
 
 
 	def fallback_question_generation(self, inputs):
@@ -236,61 +132,65 @@ def post_process_answer(answer):
 
 	return answer
 
+def get_args():
+    parser = argparse.ArgumentParser("")
+    parser.add_argument("--path", default="../datasets/vqa/Partition_Q_V2/", type=str)
+    parser.add_argument("--coco_path", default="/mhug/mhug-dataset/COCO", type=str)
+    parser.add_argument("--savepath", default="snap/naiveblip_cl_no_ents/", type=str)
+    parser.add_argument("--mem_size", type=int, default=20000)
+    parser.add_argument("--self_answer", action='store_true')
+    parser.add_argument("--dest_dir", default="../datasets/vqa/Partition_Q_V2_test/")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-	path = "../datasets/vqa/Partition_Q_V2/"
-	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 4)) 
-	task = All_task[task_idx]
-	method = 'lamol'
-	savepath = f'snap/naiveblip_cl_{method}/' 
+	args = get_args()
+	path = args.path
+	savepath = args.savepath 
 	gen_ques = GenQues(savepath)
-	mem_size = 20000
-	if method == 'lamol':
-		mem_size = 5000
-		gen_ques._load_model(task)
-	self_answer = False
-	if self_answer:
-		print("Answers will be self generated")
-	fname = f"karpathy_train_{task}.json"
-	source = os.path.join(path, fname)
-	dest_dir = f'../datasets/vqa/Partition_Q_V2_{method}/'
+	mem_size = args.mem_size
+	self_answer = args.self_answer
+	dest_dir = args.dest_dir
 	print(f"Files will be saved @ {dest_dir}")
 	os.makedirs(dest_dir, exist_ok=True)
-	dest = os.path.join(f'{dest_dir}', fname)
-	data = _load_data(path, task_idx, mem_size)
-	with open(f'metrics/{task}_question_dist.json', 'r') as f:
-		desired_counts = json.load(f)
-	
-	incorrect = 0
-	new_data = []
-	if task != 'q_causal':
-		partition = int(mem_size/task_idx)
-	else:
-		partition = int(len(data)/task_idx)
-	for i in range(task_idx):
-		qg_task = All_task[i]
-		start_idx = i * partition
-		end_idx = start_idx + partition
-		print(f"Now task is {task} and question generation will be from {qg_task}")
-		print(f"start idx: {start_idx}")
-		print(f"end idx: {end_idx}")
-		data_subset = data[start_idx:end_idx]
-		if method != 'lamol':
+	if self_answer:
+		print("Answers will be self generated")
+	task_idx = int(os.getenv('SLURM_ARRAY_TASK_ID', 9)) 
+	for task_idx in range(1, len(All_task)):
+		task = All_task[task_idx]
+		fname = f"karpathy_train_{task}.json"
+		source = os.path.join(path, fname)
+		dest = os.path.join(f'{dest_dir}', fname)
+		data = _load_data(path, task_idx, mem_size)
+		incorrect = 0
+		new_data = []
+		if task != 'q_causal':
+			partition = int(mem_size/task_idx)
+		else:
+			partition = int(len(data)/task_idx)
+		for i in range(task_idx):
+			qg_task = All_task[i]
+			start_idx = i * partition
+			end_idx = start_idx + partition
+			print(f"Now task is {task} and question generation will be from {qg_task}")
+			print(f"start idx: {start_idx}")
+			print(f"end idx: {end_idx}")
+			data_subset = data[start_idx:end_idx]
 			gen_ques._load_model(qg_task)
-		# gen_ques._load_answers(qg_task)
-		print(f'Number of samples: {len(data_subset)}')
-		for _d in tqdm(data_subset):
-			img_name = f"{_d['img_id']}.jpg"
-			split = "train" if 'train2014' in img_name else 'val'
-			img_path = os.path.join(f"../datasets/COCO/{split}2014", img_name)
-			pairs = gen_ques.inference_qa(img_path, _d, qg_task, desired_counts[qg_task], method, self_answer=False)
-			if pairs != None and len(pairs)>0 :
-				questions, answers = zip(*pairs)
-				if not "" in answers or not "" in answers:
-					_d[f'Q_{qg_task}'] = questions
-					_d[f'A_{qg_task}'] = answers
-					new_data.append(_d)
-			else:
-				incorrect +=1
-	print(f"Incorrect: {incorrect} in {len(data)} samples")
-	with open(dest, 'w') as f:
-		json.dump(new_data, f, indent=4)
+			print(f'Number of samples: {len(data_subset)}')
+			for _d in tqdm(data_subset):
+				img_name = f"{_d['img_id']}.jpg"
+				split = "train" if 'train2014' in img_name else 'val'
+				img_path = os.path.join(f"{args.coco_path}/{split}2014", img_name)
+				pairs = gen_ques.inference_qa(img_path, _d, qg_task, self_answer=False)
+				if pairs != None and len(pairs)>0 :
+					questions, answers = zip(*pairs)
+					if not "" in answers or not "" in answers:
+						_d[f'Q_{qg_task}'] = questions
+						_d[f'A_{qg_task}'] = answers
+						new_data.append(_d)
+				else:
+					incorrect +=1
+		print(f"Incorrect: {incorrect} in {len(data)} samples")
+		with open(dest, 'w') as f:
+			json.dump(new_data, f, indent=4)

@@ -1,10 +1,14 @@
-# The name of experiment
-name='naiveblip_cl_proto'
-
+#!/bin/bash
+# Check if a name was passed as an argument, if not, use a default value
+if [ -z "$1" ]; then
+    name='naiveblip_cl_balanced_cluster_7_5k' # default value if no argument is provided
+else
+    name="$1"
+fi
 output=snap/$name
-
-
-PYTHONPATH=$PYTHONPATH:./src \
+# Set environment variables
+export PYTHONPATH=$PYTHONPATH:./src
+#call your program here
 python src/vqacl.py \
         --train karpathy_train \
         --valid karpathy_val \
@@ -16,9 +20,8 @@ python src/vqacl.py \
         --batch_size 80 \
         --valid_batch_size 1 \
         --optim 'blip_adamw' \
-        --local-rank 0 \
         --eval_blip True \
         --ft_layers 'query_tokens' \
-        --checkpoint 'snap/naiveblip_cl_proto/q_causal_LAST' \
-        --blip_model "vqaclblip" \
-        --show_train_progress True
+        --checkpoint '' \
+        --local-rank 0 \
+        --show_train_progress False

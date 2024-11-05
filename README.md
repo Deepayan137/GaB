@@ -1,5 +1,6 @@
 # One VLM to Keep it Learning: Generation and Balancing for Data-free Continual Visual Question Answering
 [Arxiv](https://arxiv.org/abs/2411.02210)
+
 ## Setup
 
 ```bash
