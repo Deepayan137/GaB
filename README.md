@@ -1,40 +1,7 @@
-# VQACL: A Novel Visual Question Answering Continual Learning Setting  (accepted to CVPR2023)
-
-<!--We establish a novel VQA Continual Learning setting named VQACL (accepted to CVPR2023), which contains two key components: a dual-level task sequence where visual and linguistic data are nested, and a novel composition testing containing new skill-concept combinations. The former devotes to simulating the ever-changing multimodal datastream in real world and the latter aims at measuring models’ generalizability for cognitive reasoning.
-
-To do the VQACL, we also propose a novel representation learning method, which leverages a sample-specific and a sample-invariant feature to learn
-representations that are both discriminative and generalizable for VQA.-->
-
-## Introduction
-
-### 1. Motivation and VQACL Setting
-These years, most existing continual learning works focus on unimodal tasks such as image classification, and paid little attention to multimodal tasks like visual question answering (VQA). To cope with the constantly emerging real-world multimodal data, a practical AI system should be capable of continually learning from multimodal sources while alleviating forgetting previously learned knowledge.
-
-
-<div align="center"><img src="figure1.png" width="400px" alt="Figure 1"></div>
-
-In this paper, we design **a novel VQA continual learning setting named VQACL**. During the design, we consider two vital issues. 
-
-First, as shown in Figure 1, the VQA input comes from both vision and linguistic modalities, thus the task setting should tackle multimodal continuous data in a holistic manner. To achieve it, as shown in Figure 2, imitating the cognitive process of children, we define a **dual-level task sequence**. Specifically, in the outer level, we set up a sequence of linguistic-driven tasks to evaluate for different question types. In the inner level, for each outer level task, we construct a series of randomly ordered visual-driven subtasks according to object categories.
-
-Second, compositionality, a vital property of cognitive reasoning, should be considered in the VQA continual learning. The compositionality here denotes the model’s generalization ability towards novel combinations of reasoning skills (i.e., question type) and visual concepts (i.e., image object). To achieve it, we construct a **novel composition split**, where we remove a visual-driven subtask from each outer task during training, and utilize it for testing. In this way, the testing data contain novel skill-concept combinations that are not seen at the training time. 
-
-In conclusion, on the one hand, our VQACL setting requires models to perform effective multimodal knowledge transfer from old tasks to new tasks while mitigating catastrophic forgetting. On the other hand, the model should be capable of generalizing to novel compositions for cognitive reasoning.
-
-![Figure 2](figure2.png)
-
-### 2. Method
-
-We also propose a novel representation learning method for VQACL, which introduces a **sample-specific** (SS) and a **sample-invariant** (SI) feature to learn better representations that are both discriminative and generalizable. Specifically, the SS feature is learned through a transformer encoder, which can encode the most attractive and salient contents to make it discriminative. For the SI feature, we resort to prototype learning to aggregate object class or question type information. Because category knowledge is stable and representative across different scenarios, the SI feature can possess strong generalizability.
-
-<div align="center"><img src="figure3.png" width="400px" alt="Figure 3"></div>
-
-### 3. Experiment
-During experiments, as shown in Table 1, we re-purpose and evaluate 5 well-known continual learning methods. The results indicate these models struggle to obtain satisfactory results. Remarkably, our model consistently achieves the best performance, demonstrating the effectiveness and compositionality of our approach.
-
-<div align="center"><img src="table.png" width="600px" alt="Table 1"></div>
-
+# One VLM to Keep it Learning: Generation and Balancing for Data-free Continual Visual Question Answering
+[Arxiv](https://arxiv.org/abs/2411.02210)
 ## Setup
+
 ```bash
 # Create python environment (optional)
 conda create -n vqacl python=3.7
@@ -42,11 +9,8 @@ source activate vqacl
 
 # Install python dependencies
 pip install -r requirements.txt
-
-# Download T5 backbone checkpoint
-python download_backbones.py
-
 ```
+
 
 ## Code structure
 ```bash
@@ -65,46 +29,62 @@ python download_backbones.py
 # Training and testing in the VQACL setting
 ./VL-T5/
     src/
-        modeling_t5_our.py                                    <= Our VL-T5 model classes
-        vqacl.py vqacl_comp.py vqa_data.py vqa_model.py ...   <= Testing in the VQACL setting
+        blip2/
+        	modeling_blip.py                                  <= Our Blip2 model classes
+        analysis/                                             <= question generationa and sampling
+        vqacl.py vqa_data_blip.py vqa_model_blip.py ...   	  <= Testing in the VQACL setting
         param.py                                              <= (argparse) configuration
-        tokenization.py                                       <= custom tokenizer
-        utils.py, dist_utils.py                               <= utility functions
+        utils.py                            				  <= utility functions
     snap/                                                     <= store weight checkpoints
     scripts/                                                  <= bash scripts for evaluation
 ```
 
 ## Dataset Preparation / Model checkpoint
 - Download the VQACL partition of VQA v2 from [Google Drive](https://drive.google.com/file/d/11gx7AxyeMP1KVuzHErIfNKCLeBWGq3pE/view?usp=share_link) and put it into datasets/nextqa/Partition_Q.
-- Download the VQACL partition of NExT-QA from [Google Drive](https://drive.google.com/file/d/1lwWL_PhNKactFEqQF8IVx-HeJEuboe8D/view?usp=share_link) and put it into datasets/vqa/Partition_Q.
 - Download `datasets/COCO` from [Google Drive](https://drive.google.com/drive/folders/1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf?usp=sharing)
-- Download video features of NExT-QA from [Goolge Drive](https://drive.google.com/file/d/1rS5X_t_VSDF4uP3HL1gPQ0ZgWIEuglgk/view?usp=share_link) and put it into datatsets/nextqa/
-- Download model checkpoints from [Google Drive](https://drive.google.com/drive/folders/1GDI9uG9OSQk0ObEaEJI3C6eKcDzh0yGp?usp=share_link)
+- Download model checkpoints from [Google Drive](https://drive.google.com/drive/folders/1Wuqnyo5Rf807te8CXjcgpbMH8vkdeb6M?usp=sharing)
 
-## VQACL tasks
+## Usage
 
 ```bash
 # Training with 1 gpu for VQA v2
 cd VL-T5/
-bash scripts/VQACL_train.sh 1 # Standard Training
-bash scripts/VQACL_COMP_train.sh 1 # Training for Novel Composition Testing (Group-5)
-
+bash scripts/train_blip.sh path/to/ckpt_dir balance_strategy # cluster, classifier or unbalanced
 # Testing with 1 gpu for VQA v2
 cd VL-T5/
-bash scripts/VQACL.sh 1 # Standard Testing
-bash scripts/VQACL_COMP.sh 1 # Novel Composition Testing (Group-5)
-```
-## Citation
-```
-@InProceedings{zhang2023vqacl,
-    author    = {Zhang, Xi and Zhang, Feifei and Xu, Changsheng},
-    title     = {VQACL: A Novel Visual Question Answering Continual Learning Setting},
-    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-    month     = {June},
-    year      = {2023}
-}
+bash scripts/test_blip.sh path/to/ckpt_dir
 ```
 
-## Acknowledgement
+**Note:** 
+- Download the checkpoint for the first task (recognition) from (recognition from [recognition_ckpt](https://drive.google.com/file/d/1e-s4byIImEEgPlQITw19PtsfHj-mN4Br/view?usp=drive_link)), place it in `snap` folder, and start training or evaluating by specifying the checkpoint's path as a command line argument.
+- Before training our model on any subsequent tasks (beyond the first), we need to generate QA pairs as part of our data-free rehearsal strategy.
+- While the next section details how to generate and balance data, pre-generated questions and their balanced versions are already available for download at [data link](https://drive.google.com/drive/folders/1LZJ1SDMcl_Rz12pvbBJQwli-dRgulIt5?usp=drive_link). Unzip the files and place the directory inside `datasets/vqa/`
 
-Our model is based on the official [VL-T5](https://github.com/j-min/VL-T5) repository, we thank the authors to release their code. If you use the related part, please cite the corresponding paper commented in the code.
+
+## Question Generation and Balancing strategy
+
+* To train the question generator model, adjust the following settings in the `train_blip.sh` script:
+    - Enable caption loss: `--use_cap_loss True`
+    - Disable using generated data: `--use_gen_data False`
+    - Ensure training starts from scratch: `--train_from_scratch True`
+    - Remove the memory flag: remove `--memory`
+    - Use `--epochs 1`
+    - We provide the trained question generation heads in [link](https://drive.google.com/file/d/1RIn7UjOrIh87Zfgw7Z6BoLV8IouGHGBg/view?usp=sharing). Unzip the folder and place it inside `snap`.
+
+**Note:** It is feasible to train the question generation and answering heads simultaneously, but this approach demands reducing the batch size from `80` to `32` to prevent CUDA out-of-memory errors, significantly slowing down the training process.
+
+* Question Generation:
+    - Execute the command: `python -m src.analysis.vqacl_gen_ques`
+* Storing Question Category Statistics:
+    - Obtain the classifier and sentence representations [here](https://drive.google.com/file/d/1YD3HoHWT7HBzZCDdcnJrUCA30t7oCjno/view?usp=drive_link).
+    - Ensure to download and position these files within the `../ckpt_vqacl` directory.
+    - Run: `python -m src.analysis.vqacl_question_distribution`
+    - This will generate a `../metrics` folder to store all distributions.
+    - Note: Classifier training and clustering are conducted exclusively on the training set questions.
+ * Balanced Data Generation::
+    - After acquiring the question category statistics, generate balanced data using:
+    - `python -m src.analysis.vqacl_create_balanced_rehearsal`
+    - The default balancing strategy utilized is `cluster`.
+
+* We provide the balanced data files in the links below the usage section.
+
