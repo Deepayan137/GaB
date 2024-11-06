@@ -10,7 +10,7 @@ Vision-Language Models (VLMs) have shown significant promise in Visual Question 
 
 ```bash
 # Create python environment (optional)
-conda create -n vqacl python=3.7
+conda create -n vqacl python=3.11
 source activate vqacl
 
 # Install python dependencies
@@ -27,8 +27,9 @@ pip install -r requirements.txt
         features/
     vqa/
         Paritition_Q/
-    nextqa/
-        Paritition_Q/
+    gvqa/
+    npy/
+        function/
     ...
 
 
@@ -37,7 +38,7 @@ pip install -r requirements.txt
     src/
         blip2/
         	modeling_blip.py                                  <= Our Blip2 model classes
-        analysis/                                             <= question generationa and sampling
+        analysis/                                             <= question generation and sampling
         vqacl.py vqa_data_blip.py vqa_model_blip.py ...   	  <= Testing in the VQACL setting
         param.py                                              <= (argparse) configuration
         utils.py                            				  <= utility functions
@@ -69,13 +70,11 @@ bash scripts/test_blip.sh path/to/ckpt_dir
 
 ## Question Generation and Balancing strategy
 
-* To train the question generator model, adjust the following settings in the `train_blip.sh` script:
-    - Enable caption loss: `--use_cap_loss True`
-    - Disable using generated data: `--use_gen_data False`
-    - Ensure training starts from scratch: `--train_from_scratch True`
-    - Remove the memory flag: remove `--memory`
-    - Use `--epochs 1`
-    - We provide the trained question generation heads in [link](https://drive.google.com/file/d/1RIn7UjOrIh87Zfgw7Z6BoLV8IouGHGBg/view?usp=sharing). Unzip the folder and place it inside `snap`.
+### VQAv2
+
+* To train the question generator model, execute `bash scripts/train_blip_qg.sh`:
+
+* We also provide the trained question generation heads in [link](https://drive.google.com/file/d/1RIn7UjOrIh87Zfgw7Z6BoLV8IouGHGBg/view?usp=sharing). Unzip the folder and place it inside `snap`.
 
 **Note:** It is feasible to train the question generation and answering heads simultaneously, but this approach demands reducing the batch size from `80` to `32` to prevent CUDA out-of-memory errors, significantly slowing down the training process.
 
@@ -87,10 +86,37 @@ bash scripts/test_blip.sh path/to/ckpt_dir
     - Run: `python -m src.analysis.vqacl_question_distribution`
     - This will generate a `../metrics` folder to store all distributions.
     - Note: Classifier training and clustering are conducted exclusively on the training set questions.
- * Balanced Data Generation::
+ * Balanced Data Generation:
     - After acquiring the question category statistics, generate balanced data using:
     - `python -m src.analysis.vqacl_create_balanced_rehearsal`
     - The default balancing strategy utilized is `cluster`.
 
 * We provide the balanced data files in the links below the usage section.
 
+
+### CLOVE
+
+## Usage
+
+```bash
+# Training with 1 gpu for VQA v2
+cd VL-T5/
+bash scripts/train_blip_sgvqa.sh path/to/ckpt_dir balance_strategy # cluster, classifier or unbalanced
+# Testing with 1 gpu for VQA v2
+cd VL-T5/
+bash scripts/test_blip_sgvqa.sh path/to/ckpt_dir
+```
+
+* To train the question generator model, execute `bash scripts/train_blip_qg.sh`:
+    - We also provide the trained question generation heads in [link](). Unzip the folder and place it inside `snap`.
+
+* Question Generation:
+    - Execute the command: `python -m src.analysis.gen_ques`
+* Storing Question Category Statistics:
+    - Obtain the classifier and sentence representations [here](https://drive.google.com/file/d/1L7Rw8kuqICSxYowsbju_Y6o_qaxEx8SX/view?usp=drive_link) and place the files in `../ckpt_sgvqa`
+    - Run: `python -m src.analysis.question_distribution` for storing question category statistics
+* Balanced Data Generation:
+    - For Generation of balanced replay data, run `python -m src.analysis.create_balanced_rehearsal`
+    - Default strategy is `cluster`. For classification strategy, change the `balancing_strategy` to `classifier`.
+
+* We provide te balanced data files [here](https://drive.google.com/drive/folders/1J2WRpIQPwibfPWuPK_zBPYcgmWKcqtBF?usp=sharing). Place the folder in `../datasets`
