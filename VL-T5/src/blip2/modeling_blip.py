@@ -1,50 +1,72 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
-import copy
 
-from transformers.models.blip_2.modeling_blip_2 import (Blip2VisionModel,
-    Blip2ForConditionalGeneration, Blip2QFormerLayer, Blip2QFormerEncoder, Blip2QFormerModel, Blip2ForConditionalGenerationModelOutput)
+from transformers.models.blip_2.modeling_blip_2 import (
+    Blip2VisionModel,
+    Blip2ForConditionalGeneration,
+    Blip2QFormerLayer,
+    Blip2QFormerEncoder,
+    Blip2QFormerModel,
+    Blip2ForConditionalGenerationModelOutput,
+)
 from transformers.pytorch_utils import apply_chunking_to_forward
-from transformers.modeling_outputs import (BaseModelOutputWithPastAndCrossAttentions, 
-    BaseModelOutputWithPoolingAndCrossAttentions, BaseModelOutputWithPooling)
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPastAndCrossAttentions,
+    BaseModelOutputWithPoolingAndCrossAttentions,
+    BaseModelOutputWithPooling,
+)
 
 from src.blip2.prompt import Prompt
 
+
 class Blip2VisionModelOurs(Blip2VisionModel):
-    def __init__(self, config, lambda_l2p=0.0,
-        prompt_length=5, embedding_key='mean', prompt_init='cls', 
-        prompt_pool=False, pool_size=None, use_prompt_mask=False, top_k=5, 
-        batchwise_prompt=True, prompt_key_init='uniform',prompt_key=False):
+    def __init__(
+        self,
+        config,
+        lambda_l2p=0.0,
+        prompt_length=5,
+        embedding_key="mean",
+        prompt_init="cls",
+        prompt_pool=False,
+        pool_size=None,
+        use_prompt_mask=False,
+        top_k=5,
+        batchwise_prompt=True,
+        prompt_key_init="uniform",
+        prompt_key=False,
+    ):
         super().__init__(config)
         num_patches = 256
         self.use_prompt_mask = use_prompt_mask
-        embed_dim=config.hidden_size
+        embed_dim = config.hidden_size
         if pool_size is not None and prompt_pool:
-            self.prompt = Prompt(lambda_l2p=lambda_l2p, length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
-                    prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
-                    prompt_key_init=prompt_key_init,)
-    
+            self.prompt = Prompt(
+                lambda_l2p=lambda_l2p,
+                length=prompt_length,
+                embed_dim=embed_dim,
+                embedding_key=embedding_key,
+                prompt_init=prompt_init,
+                prompt_pool=prompt_pool,
+                prompt_key=prompt_key,
+                pool_size=pool_size,
+                top_k=top_k,
+                batchwise_prompt=batchwise_prompt,
+                prompt_key_init=prompt_key_init,
+            )
+
     def get_regularizer(self):
         return self.prompt
 
-    def forward(self, 
-        pixel_values=None, 
-        output_attentions=None, 
-        output_hidden_states=None,
-        return_dict=None,
-        task_id=-1):
-
+    def forward(self, pixel_values=None, output_attentions=None, output_hidden_states=None, return_dict=None, task_id=-1):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if pixel_values is None:
             raise ValueError("You have to specify pixel_values")
 
         hidden_states = self.embeddings(pixel_values)
-        if hasattr(self, 'prompt'):
+        if hasattr(self, "prompt"):
             if self.use_prompt_mask and self.training:
                 start = task_id * self.prompt.top_k
                 end = (task_id + 1) * self.prompt.top_k
@@ -56,8 +78,8 @@ class Blip2VisionModelOurs(Blip2VisionModel):
                 prompt_mask = None
             cls_features = hidden_states[:, 0]
             res = self.prompt(hidden_states, prompt_mask=prompt_mask, cls_features=cls_features)
-            self.total_prompt_len = res['total_prompt_len']
-            hidden_states = res['prompted_embedding']
+            self.total_prompt_len = res["total_prompt_len"]
+            hidden_states = res["prompted_embedding"]
         else:
             res = dict()
 
@@ -164,12 +186,12 @@ class Blip2QFormerLayerOurs(Blip2QFormerLayer):
 
         return outputs
 
+
 class Blip2QFormerEncoderOurs(Blip2QFormerEncoder):
     def __init__(self, config):
         super().__init__(config)
-        self.layer = nn.ModuleList(
-            [Blip2QFormerLayerOurs(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
-        )
+        self.layer = nn.ModuleList([Blip2QFormerLayerOurs(config, layer_idx) for layer_idx in range(config.num_hidden_layers)])
+
     def forward(
         self,
         hidden_states,
@@ -200,9 +222,7 @@ class Blip2QFormerEncoderOurs(Blip2QFormerEncoder):
 
             if getattr(self.config, "gradient_checkpointing", False) and self.training:
                 if use_cache:
-                    logger.warning(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                    )
+                    logger.warning("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                     use_cache = False
                 layer_outputs = self._gradient_checkpointing_func(
                     layer_module.__call__,
@@ -253,11 +273,14 @@ class Blip2QFormerEncoderOurs(Blip2QFormerEncoder):
             cross_attentions=all_cross_attentions,
         )
 
+
 class Blip2QFormerModelOurs(Blip2QFormerModel):
     def __init__(self, config):
         super().__init__(config)
         self.encoder = Blip2QFormerEncoderOurs(config)
-    def forward(self,
+
+    def forward(
+        self,
         query_embeds,
         attention_mask=None,
         head_mask=None,
@@ -267,18 +290,14 @@ class Blip2QFormerModelOurs(Blip2QFormerModel):
         use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
-        return_dict=None):
-
+        return_dict=None,
+    ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # past_key_values_length
-        past_key_values_length = (
-            past_key_values[0][0].shape[2] - self.config.query_length if past_key_values is not None else 0
-        )
+        past_key_values_length = past_key_values[0][0].shape[2] - self.config.query_length if past_key_values is not None else 0
 
         query_length = query_embeds.shape[1] if query_embeds is not None else 0
 
@@ -349,24 +368,20 @@ class Blip2QFormerModelOurs(Blip2QFormerModel):
             attentions=encoder_outputs.attentions,
             cross_attentions=encoder_outputs.cross_attentions,
         )
+
+
 class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
     def __init__(self, config, pool_size=None, prompt_pool=False, lambda_l2p=0.0):
         super().__init__(config)
-        self.vision_model = Blip2VisionModelOurs(
-            config.vision_config, 
-            pool_size=pool_size, 
-            prompt_pool=prompt_pool,
-            lambda_l2p=lambda_l2p)
+        self.vision_model = Blip2VisionModelOurs(config.vision_config, pool_size=pool_size, prompt_pool=prompt_pool, lambda_l2p=lambda_l2p)
         self.qformer = Blip2QFormerModelOurs(config.qformer_config)
-        self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, 
-            config.text_config.hidden_size)
+        self.language_projection_answers = nn.Linear(config.qformer_config.hidden_size, config.text_config.hidden_size)
         # self.language_projection_answers = self.language_projection
-        self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, 
-            config.text_config.hidden_size)
-    
+        self.language_projection_questions = nn.Linear(config.qformer_config.hidden_size, config.text_config.hidden_size)
+
     def get_regularizer(self):
         return self.vision_model.get_regularizer()
-    
+
     # @torch.no_grad()  # Ensure that gradients are not calculated for this operation
     def get_features(self, pixel_values):
         """
@@ -395,13 +410,13 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
             return_dict=True,
         )
 
-
         # Switch back to training mode
         # self.train()
 
         return query_outputs, vision_outputs
 
-    def forward(self,
+    def forward(
+        self,
         query_outputs,
         vision_outputs,
         input_ids,
@@ -412,20 +427,18 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         output_attentions=None,
         output_hidden_states=None,
         labels=None,
-        return_dict=None):
-
+        return_dict=None,
+    ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         query_output = query_outputs[0]
         # step 3: use the language model, conditioned on the query outputs and the prompt
-        if mode == 'answers':
+        if mode == "answers":
             language_model_inputs = self.language_projection_answers(query_output)
-        elif mode == 'questions':
+        elif mode == "questions":
             language_model_inputs = self.language_projection_questions(query_output)
         else:
             raise ValueError("Mode must be answers or questions ")
-        language_model_attention_mask = torch.ones(
-            language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
-        )
+        language_model_attention_mask = torch.ones(language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device)
         inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
         inputs_embeds = torch.cat([language_model_inputs, inputs_embeds.to(language_model_inputs.device)], dim=1)
 
@@ -483,15 +496,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         )
 
     @torch.no_grad()
-    def generate(
-        self,
-        query_outputs,
-        vision_outputs,
-        input_ids=None,
-        attention_mask=None,
-        mode='answers',
-        **generate_kwargs):
-
+    def generate(self, query_outputs, vision_outputs, input_ids=None, attention_mask=None, mode="answers", **generate_kwargs):
         if hasattr(self, "hf_device_map"):
             # preprocess for `accelerate`
             self._preprocess_accelerate()
@@ -499,22 +504,16 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         batch_size = query_output.shape[0]
         query_output = query_outputs.last_hidden_state
         image_embeds = vision_outputs.last_hidden_state
-        if mode == 'answers':
+        if mode == "answers":
             language_model_inputs = self.language_projection_answers(query_output)
-        elif mode == 'questions':
+        elif mode == "questions":
             language_model_inputs = self.language_projection_questions(query_output)
         else:
             raise ValueError("Mode must be answers or questions")
         # language_model_inputs = self.language_projection(query_output)
-        language_attention_mask = torch.ones(
-            language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device
-        )
+        language_attention_mask = torch.ones(language_model_inputs.size()[:-1], dtype=torch.long, device=language_model_inputs.device)
         if input_ids is None:
-            input_ids = (
-                torch.LongTensor([[self.config.text_config.bos_token_id]])
-                .repeat(batch_size, 1)
-                .to(image_embeds.device)
-            )
+            input_ids = torch.LongTensor([[self.config.text_config.bos_token_id]]).repeat(batch_size, 1).to(image_embeds.device)
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         attention_mask = torch.cat([language_attention_mask, attention_mask.to(language_attention_mask.device)], dim=1)
@@ -538,11 +537,7 @@ class NaiveBlip2VQACL(Blip2ForConditionalGeneration):
         # this is a temporary workaround to be consistent with other generation models and
         # have BOS as the first token, even though under the hood we are calling LM with embeds
         if not self.language_model.config.is_encoder_decoder:
-            bos_tokens = (
-                torch.LongTensor([[self.config.text_config.bos_token_id]])
-                .repeat(batch_size, 1)
-                .to(image_embeds.device)
-            )
+            bos_tokens = torch.LongTensor([[self.config.text_config.bos_token_id]]).repeat(batch_size, 1).to(image_embeds.device)
             if not isinstance(outputs, torch.Tensor):
                 outputs.sequences = torch.cat([bos_tokens, outputs.sequences], dim=-1)
             else:

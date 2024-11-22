@@ -1,16 +1,15 @@
 import pandas as pd
 
 
-
 def calculate_average_forgetting(data):
     Incre_avg_forget = [0]  # Starting with no forgetting when no tasks have been trained
 
     # Iterate over each training session, starting from the second session (index 1)
     for t in range(1, len(data)):
         # Select the results up to and including the t-th task
-        results_now = data.iloc[:, :t + 1]
+        results_now = data.iloc[:, : t + 1]
         t_forget = []  # List to hold forgetting for each task at this stage
-        
+
         # Calculate forgetting for each task up to the current one, excluding the last trained task
         for idx in range(len(results_now.columns) - 1):
             task_list = results_now.iloc[:-1, idx]  # All but the last training's accuracy for the current task
@@ -27,11 +26,12 @@ def calculate_average_forgetting(data):
         else:
             Avg_forget = 0  # Handle cases where there may be no valid data to compute forgetting
         Incre_avg_forget.append(Avg_forget)
-    
+
     return Incre_avg_forget[-1]
 
+
 # Load the CSV file
-csv_path = 'acc_metrics/naiveblip_cl_proto.csv'  # Change to your actual CSV file path
+csv_path = "acc_metrics/naiveblip_cl_proto.csv"  # Change to your actual CSV file path
 data = pd.read_csv(csv_path)
 data = data.iloc[:, 1:]
 # import pdb;pdb.set_trace()
